@@ -1,185 +1,239 @@
-# Monoprice HTP-1 Integration for Unfolded Circle Remote
+# Monoprice HTP-1 Integration for Unfolded Circle Remote 2/3
 
-This integration provides complete control of Monoprice HTP-1 AV receivers for the Unfolded Circle Remote 2/3.
+Control your Monoprice HTP-1 AV receiver directly from your Unfolded Circle Remote 2 or Remote 3 with comprehensive media player control, **full remote UI layout**, **real-time state monitoring**, and **complete WebSocket-based control**.
+
+![Monoprice HTP-1](https://img.shields.io/badge/Monoprice-HTP--1-red)
+[![GitHub Release](https://img.shields.io/github/v/release/mase1981/uc-intg-monoprice-htp1?style=flat-square)](https://github.com/mase1981/uc-intg-monoprice-htp1/releases)
+![License](https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square)
+[![GitHub issues](https://img.shields.io/github/issues/mase1981/uc-intg-monoprice-htp1?style=flat-square)](https://github.com/mase1981/uc-intg-monoprice-htp1/issues)
+[![Community Forum](https://img.shields.io/badge/community-forum-blue?style=flat-square)](https://community.unfoldedcircle.com/)
+[![Discord](https://badgen.net/discord/online-members/zGVYf58)](https://discord.gg/zGVYf58)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/mase1981/uc-intg-monoprice-htp1/total?style=flat-square)
+[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://buymeacoffee.com/meirmiyara)
+[![PayPal](https://img.shields.io/badge/PayPal-donate-blue.svg?style=flat-square)](https://paypal.me/mmiyara)
+[![Github Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-30363D?&logo=GitHub-Sponsors&logoColor=EA4AAA&style=flat-square)](https://github.com/sponsors/mase1981)
+
 
 ## Features
 
-- Full media player control (power, volume, mute)
-- Input source selection
-- Sound mode (upmix) selection
-- Real-time state updates via WebSocket
-- Automatic reconnection on network disruption
-- Built on ucapi-framework for reliability and performance
+This integration provides comprehensive control of Monoprice HTP-1 AV receivers through the native WebSocket API, delivering seamless integration with your Unfolded Circle Remote for complete home theater control.
 
-## Requirements
+---
+## 💰 Support Development
 
-- Monoprice HTP-1 AV Receiver
-- Network connectivity to the HTP-1
-- Unfolded Circle Remote 2 or Remote 3
+If you find this integration useful, consider supporting development:
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-pink?style=for-the-badge&logo=github)](https://github.com/sponsors/mase1981)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/meirmiyara)
+[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/mmiyara)
+
+Your support helps maintain this integration. Thank you! ❤️
+---
+
+### 🎵 **Media Player Control**
+
+#### **Power Management**
+- **Power On/Off** - Complete power control
+- **Power Toggle** - Quick power state switching
+- **State Feedback** - Real-time power state monitoring
+
+#### **Volume Control**
+- **Volume Up/Down** - Precise volume adjustment
+- **Set Volume** - Direct volume control (-127.5dB to 0dB)
+- **Volume Slider** - Visual volume control (0-100 scale)
+- **Mute Toggle** - Quick mute/unmute
+- **Unmute** - Explicit unmute control
+- **Real-time Updates** - Instant volume feedback via WebSocket
+
+#### **Source Selection**
+Control all available input sources:
+- **HDMI Inputs** - All configured HDMI inputs
+- **Analog Inputs** - Stereo and multichannel analog
+- **Digital Inputs** - Coaxial and optical
+- **ARC Input** - HDMI ARC support
+- **Other Sources** - USB, network streaming, etc.
+- **Custom Names** - Uses your configured input names
+
+#### **Sound Mode Control**
+- **Upmix Selection** - Choose from available upmix modes
+- **DTS Neural:X** - Immersive audio processing
+- **Dolby Surround** - Dolby upmixing
+- **Stereo/Native** - Direct audio modes
+- **Real-time Feedback** - Current mode displayed
+
+### 🎮 **Remote Entity**
+
+#### **Full UI Layout**
+Pre-configured button layout optimized for Remote UI:
+- **Power Control** - Toggle power button
+- **Volume Controls** - Volume up/down, mute buttons
+- **Navigation** - D-pad (up, down, left, right, enter)
+- **Menu Navigation** - Back, Home buttons
+- **Activity Support** - All buttons available as simple commands
+
+#### **Activity Integration**
+- Works seamlessly with Remote activities
+- Simple command support for custom macros
+- Pre-configured button mappings
+
+### 📊 **Sensor Entities**
+
+Real-time monitoring of receiver state:
+
+- **Input Sensor** - Currently selected input source
+- **Volume Sensor** - Current volume level in dB
+- **Sound Mode Sensor** - Active sound mode/upmix
+- **Audio Format Sensor** - Detected audio codec and channels
+- **Video Mode Sensor** - Current video resolution and HDR format
+- **Connection Sensor** - Integration connection status
+
+### **Protocol Requirements**
+
+- **Protocol**: Monoprice HTP-1 WebSocket API
+- **WebSocket Port**: 80 (HTTP) or 443 (HTTPS)
+- **WebSocket Path**: `/ws/controller`
+- **Network Access**: Receiver must be on same local network
+- **Connection**: Persistent WebSocket with automatic reconnection
+- **Real-time Updates**: Bidirectional communication for instant state changes
+
+### **Network Requirements**
+
+- **Local Network Access** - Integration requires same network as HTP-1 receiver
+- **HTTP Protocol** - WebSocket over HTTP (port 80) or HTTPS (port 443)
+- **Static IP Recommended** - Receiver should have static IP or DHCP reservation
+- **Firewall** - Must allow HTTP/WebSocket traffic
 
 ## Installation
 
-### Via Remote Web Interface
+### Option 1: Remote Web Interface (Recommended)
+1. Navigate to the [**Releases**](https://github.com/mase1981/uc-intg-monoprice-htp1/releases) page
+2. Download the latest `uc-intg-monoprice-htp1-<version>-aarch64.tar.gz` file
+3. Open your remote's web interface (`http://your-remote-ip`)
+4. Go to **Settings** → **Integrations** → **Add Integration**
+5. Click **Upload** and select the downloaded `.tar.gz` file
 
-1. Navigate to Integrations
-2. Add new integration
-3. Search for "Monoprice HTP-1"
-4. Follow setup wizard
+### Option 2: Docker (Advanced Users)
 
-### Docker
+The integration is available as a pre-built Docker image from GitHub Container Registry:
 
+**Image**: `ghcr.io/mase1981/uc-intg-monoprice-htp1:latest`
+
+**Docker Compose:**
+```yaml
+services:
+  uc-intg-monoprice-htp1:
+    image: ghcr.io/mase1981/uc-intg-monoprice-htp1:latest
+    container_name: uc-intg-monoprice-htp1
+    network_mode: host
+    volumes:
+      - </local/path>:/data
+    environment:
+      - UC_CONFIG_HOME=/data
+      - UC_INTEGRATION_HTTP_PORT=9090
+      - UC_INTEGRATION_INTERFACE=0.0.0.0
+      - PYTHONPATH=/app
+    restart: unless-stopped
+```
+
+**Docker Run:**
 ```bash
-docker run -d \
-  --name uc-intg-monoprice-htp1 \
-  --restart unless-stopped \
-  --network host \
-  -v ./config:/config \
-  ghcr.io/mase1981/uc-intg-monoprice-htp1:latest
+docker run -d --name uc-htp1 --restart unless-stopped --network host -v htp1-config:/app/config -e UC_CONFIG_HOME=/app/config -e UC_INTEGRATION_INTERFACE=0.0.0.0 -e UC_INTEGRATION_HTTP_PORT=9090 -e PYTHONPATH=/app ghcr.io/mase1981/uc-intg-monoprice-htp1:latest
 ```
 
 ## Configuration
 
-During setup, you will need to provide:
-- **Device Name**: Friendly name for your HTP-1
-- **IP Address**: Network IP address of your HTP-1
+### Step 1: Prepare Your HTP-1 Receiver
 
-The integration connects to the HTP-1's built-in WebSocket interface at `ws://<ip>/ws/controller`.
+**IMPORTANT**: HTP-1 receiver must be powered on and connected to your network before adding the integration.
 
-## Supported Features
+#### Verify Network Connection:
+1. Check that receiver is connected to network (Ethernet recommended)
+2. Note the IP address from receiver's network settings menu
+3. Ensure receiver firmware is up to date
+4. Verify WebSocket API is accessible (enabled by default)
+
+#### Network Setup:
+- **Wired Connection**: Recommended for stability
+- **Static IP**: Recommended via DHCP reservation
+- **Firewall**: Allow HTTP traffic (port 80)
+- **Network Isolation**: Must be on same subnet as Remote
+
+### Step 2: Setup Integration
+
+1. After installation, go to **Settings** → **Integrations**
+2. The Monoprice HTP-1 integration should appear in **Available Integrations**
+3. Click **"Configure"** to begin setup:
+
+#### **Configuration:**
+- **Device Name**: Friendly name (e.g., "Living Room HTP-1")
+- **IP Address**: Enter receiver IP (e.g., 192.168.1.100)
+- Click **Complete Setup**
+
+#### **Connection Test:**
+- Integration verifies receiver connectivity
+- WebSocket connection established
+- Setup fails if receiver unreachable
+
+4. Integration will create entities:
+   - **Media Player**: `media_player.htp1_[device_name]`
+   - **Remote**: `remote.htp1_[device_name]`
+   - **Sensors**: Multiple sensor entities for state monitoring
+
+## Using the Integration
 
 ### Media Player Entity
 
-- **Power Control**: Turn on/off
-- **Volume Control**: Set volume, volume up/down
-- **Mute Control**: Mute/unmute, toggle mute
-- **Source Selection**: Select from visible inputs
-- **Sound Mode**: Select upmix mode (DTS Neural:X, Dolby Surround, etc.)
+The media player entity provides complete control:
+
+- **Power Control**: On/Off/Toggle with state feedback
+- **Volume Control**: Volume slider (-127.5dB to 0dB mapped to 0-100)
+- **Volume Buttons**: Up/Down with real-time feedback
+- **Mute Control**: Toggle, Mute, Unmute
+- **Source Selection**: Dropdown with all available inputs
+- **Sound Mode Selection**: Choose upmix/audio mode
+- **State Display**: Current power, volume, source, mute, and audio format
 
 ### Remote Entity
 
-- **Full UI Layout**: Pre-configured button layout for Remote UI
-- **Power Control**: Toggle power
-- **Volume Controls**: Volume up/down, mute
-- **Navigation**: D-pad navigation (up, down, left, right, enter)
-- **Menu Control**: Back, Home buttons
-- **Activity Support**: All buttons available as simple commands for activities
+The remote entity provides:
+- **Power Button**: Toggle power
+- **Volume Buttons**: Up, Down, Mute
+- **Navigation Buttons**: Up, Down, Left, Right, Enter
+- **Menu Buttons**: Back, Home
+- **Activity Support**: All buttons work in activities
 
 ### Sensor Entities
 
-- **Input Sensor**: Currently selected input source
-- **Volume Sensor**: Current volume level in dB
-- **Sound Mode Sensor**: Active sound mode/upmix
-- **Audio Format Sensor**: Detected audio codec and channels
-- **Video Mode Sensor**: Current video resolution and HDR format
-- **Connection Sensor**: Integration connection status
+| Sensor | Description |
+|--------|-------------|
+| Input Sensor | Currently selected input source |
+| Volume Sensor | Current volume level in dB |
+| Sound Mode Sensor | Active sound mode/upmix |
+| Audio Format Sensor | Current audio codec and channel count |
+| Video Mode Sensor | Video resolution and HDR format |
+| Connection Sensor | WebSocket connection status |
 
-## Development
+## Credits
 
-### Setup Development Environment
-
-```bash
-# Clone repository
-git clone https://github.com/mase1981/uc-intg-monoprice-htp1.git
-cd uc-intg-monoprice-htp1
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Running Locally
-
-```bash
-python -m intg_monoprice_htp1
-```
-
-### Debugging in VS Code
-
-Open the project in VS Code and use the included launch configuration (F5).
-
-## Testing
-
-### Run Unit Tests
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run all unit tests
-python run_tests.py --unit
-
-# Or use pytest directly
-pytest -m "not integration"
-```
-
-### Run Integration Tests with Simulator
-
-Integration tests use the included HTP-1 simulator:
-
-```bash
-# Start the simulator (in separate terminal)
-python simulator/htp1_simulator.py --port 9999
-
-# Run integration tests
-python run_tests.py --integration
-```
-
-### Run All Tests with Coverage
-
-```bash
-python run_tests.py --coverage
-```
-
-Coverage report will be generated in `htmlcov/index.html`.
-
-### Using the Simulator
-
-The simulator can be used for manual testing without hardware:
-
-```bash
-# Start simulator on default port (80)
-python simulator/htp1_simulator.py
-
-# Or specify custom host/port
-python simulator/htp1_simulator.py --host 127.0.0.1 --port 8080
-
-# Enable debug logging
-python simulator/htp1_simulator.py --debug
-```
-
-Then configure your integration to connect to the simulator's IP address and port.
-
-See [simulator/README.md](simulator/README.md) for more details.
-
-## Architecture
-
-This integration is built using the ucapi-framework which provides:
-- Automatic entity persistence and reboot survival
-- Device lifecycle management
-- WebSocket connection handling with automatic reconnection
-- Event-driven state updates
-
-### Key Components
-
-- **device.py**: WebSocket device implementation with menu navigation support
-- **media_player.py**: Media player entity with command handlers
-- **remote.py**: Remote entity with full UI button layout
-- **sensor.py**: Sensor entities for state monitoring
-- **config.py**: Configuration data model
-- **setup_flow.py**: Device setup and validation
-- **driver.py**: Integration driver managing all entities
+- **Developer**: Meir Miyara
+- **Monoprice**: High-performance HTP-1 AV processor
+- **Unfolded Circle**: Remote 2/3 integration framework (ucapi)
+- **Protocol**: Monoprice HTP-1 WebSocket API
+- **Community**: Testing and feedback from UC community
 
 ## License
 
-MPL-2.0
+This project is licensed under the Mozilla Public License 2.0 (MPL-2.0) - see LICENSE file for details.
 
-## Author
+## Support & Community
 
-Meir Miyara (meir.miyara@gmail.com)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/mase1981/uc-intg-monoprice-htp1/issues)
+- **UC Community Forum**: [General discussion and support](https://unfolded.community/)
+- **Developer**: [Meir Miyara](https://www.linkedin.com/in/meirmiyara)
+- **Monoprice Support**: [Official Monoprice Support](https://www.monoprice.com/pages/support)
 
-## Support
+---
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/mase1981/uc-intg-monoprice-htp1/issues).
+**Made with ❤️ for the Unfolded Circle and Monoprice Communities**
+
+**Thank You**: Meir Miyara
