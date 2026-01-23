@@ -17,6 +17,7 @@ from intg_monoprice_htp1.sensor import (
     HTP1VolumeSensor,
     HTP1SoundModeSensor,
     HTP1AudioFormatSensor,
+    HTP1OutputAudioFormatSensor,
     HTP1VideoModeSensor,
     HTP1ConnectionSensor,
 )
@@ -37,6 +38,7 @@ class HTP1Driver(BaseIntegrationDriver[HTP1Device, HTP1Config]):
                 HTP1VolumeSensor,
                 HTP1SoundModeSensor,
                 HTP1AudioFormatSensor,
+                HTP1OutputAudioFormatSensor,
                 HTP1VideoModeSensor,
                 HTP1ConnectionSensor,
             ],
@@ -55,6 +57,7 @@ class HTP1Driver(BaseIntegrationDriver[HTP1Device, HTP1Config]):
             HTP1VolumeSensor(device_config, device),
             HTP1SoundModeSensor(device_config, device),
             HTP1AudioFormatSensor(device_config, device),
+            HTP1OutputAudioFormatSensor(device_config, device),
             HTP1VideoModeSensor(device_config, device),
             HTP1ConnectionSensor(device_config, device),
         ]

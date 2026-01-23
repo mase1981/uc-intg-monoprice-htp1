@@ -168,6 +168,7 @@ class HTP1Device(WebSocketDevice):
         volume_sensor_id = f"sensor.{self.identifier}_volume"
         sound_mode_sensor_id = f"sensor.{self.identifier}_sound_mode"
         audio_format_sensor_id = f"sensor.{self.identifier}_audio_format"
+        output_audio_format_sensor_id = f"sensor.{self.identifier}_output_audio_format"
         video_mode_sensor_id = f"sensor.{self.identifier}_video_mode"
         connection_sensor_id = f"sensor.{self.identifier}_connection"
 
@@ -223,25 +224,47 @@ class HTP1Device(WebSocketDevice):
 
         # Get audio format
         audio_format = "Unknown"
-        if "audioinfo" in self._state:
-            audio_info = self._state["audioinfo"]
-            codec = audio_info.get("codec", "")
-            channels = audio_info.get("channels", "")
-            if codec:
-                audio_format = f"{codec}"
-                if channels:
-                    audio_format += f" {channels}"
+        if "status" in self._state:
+            audio_info = self._state["status"]
+            codec = audio_info.get("DECSourceProgram", "")
+            channels = audio_info.get("DECProgramFormat", "")
+            if channels:
+                audio_format = f"{channels}"
+                if codec:
+                    audio_format += f" {codec}"
+
+        # Get output audio format
+        output_audio_format = "Unknown"
+        if "status" in self._state:
+            output_audio_info = self._state["status"]
+            output_codec = output_audio_info.get("SurroundMode", "")
+            output_channels = audio_info.get("ENCListeningFormat", "")
+            if output_channels:
+                output_audio_format = f"{output_channels}"
+                if output_codec:
+                    output_audio_format += f" {output_codec}"
 
         # Get video mode
-        video_mode = "Unknown"
-        if "videoinfo" in self._state:
-            video_info = self._state["videoinfo"]
-            resolution = video_info.get("resolution", "")
-            hdr = video_info.get("hdr", "")
+        video_mode = "-----"
+        if "videostat" in self._state:
+            video_info = self._state["videostat"]
+            resolution = video_info.get("VideoResolution", "")
+            hdr = video_info.get("HDRstatus", "")
+            colospace = video_info.get("VideoColorSpace", "")
+            videomode = video_info.get("VideoMode", "")
+            videobitdepth = video_info.get("VideoBitDepth", "")     
+
             if resolution:
                 video_mode = resolution
                 if hdr:
                     video_mode += f" {hdr}"
+                if colospace:
+                    video_mode += f" {colospace}"
+                if videomode:
+                    video_mode += f" {videomode}"
+                if videobitdepth:
+                    video_mode += f" {videobitdepth}"
+
 
         # Calculate volume level (0..1) based on calibration
         volume_level = None
@@ -320,6 +343,16 @@ class HTP1Device(WebSocketDevice):
             {
                 SensorAttributes.STATE: audio_format,
                 SensorAttributes.VALUE: audio_format,
+            }
+        )
+
+         # Output Audio Format Sensor
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            output_audio_format_sensor_id,
+            {
+                SensorAttributes.STATE: output_audio_format,
+                SensorAttributes.VALUE: output_audio_format,
             }
         )
 
