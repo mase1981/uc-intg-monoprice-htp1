@@ -1,0 +1,17 @@
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+/tools
+# Configuration files (contain sensitive data)
+config.json
+*.log
+/config
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

@@ -84,6 +84,7 @@ Real-time monitoring of receiver state:
 - **Volume Sensor** - Current volume level in dB
 - **Sound Mode Sensor** - Active sound mode/upmix
 - **Audio Format Sensor** - Detected audio codec and channels
+- **Output Audio Format Sensor** - Detected output audio codec and output channels
 - **Video Mode Sensor** - Current video resolution and HDR format
 - **Connection Sensor** - Integration connection status
 
@@ -210,6 +211,7 @@ The remote entity provides:
 | Volume Sensor | Current volume level in dB |
 | Sound Mode Sensor | Active sound mode/upmix |
 | Audio Format Sensor | Current audio codec and channel count |
+| Output Audio Format Sensor | Current output audio codec and output channel count |
 | Video Mode Sensor | Video resolution and HDR format |
 | Connection Sensor | WebSocket connection status |
 
