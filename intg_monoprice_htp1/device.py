@@ -16,9 +16,10 @@ from ucapi.media_player import Attributes as MediaAttributes, States as MediaSta
 from ucapi.sensor import Attributes as SensorAttributes
 from ucapi.remote import Attributes as RemoteAttributes
 from intg_monoprice_htp1.config import HTP1Config
+from intg_monoprice_htp1.displayvalues import sound_mode_display_values 
+
 
 _LOG = logging.getLogger(__name__)
-
 
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
@@ -169,6 +170,7 @@ class HTP1Device(WebSocketDevice):
         sound_mode_sensor_id = f"sensor.{self.identifier}_sound_mode"
         audio_format_sensor_id = f"sensor.{self.identifier}_audio_format"
         output_audio_format_sensor_id = f"sensor.{self.identifier}_output_audio_format"
+        current_dirac_slot_name_sensor_id = f"sensor.{self.identifier}_current_dirac_slot_name"
         video_mode_sensor_id = f"sensor.{self.identifier}_video_mode"
         connection_sensor_id = f"sensor.{self.identifier}_connection"
 
@@ -223,7 +225,7 @@ class HTP1Device(WebSocketDevice):
             ]
 
         # Get audio format
-        audio_format = "Unknown"
+        audio_format = "none"
         if "status" in self._state:
             audio_info = self._state["status"]
             codec = audio_info.get("DECSourceProgram", "")
@@ -234,7 +236,7 @@ class HTP1Device(WebSocketDevice):
                     audio_format += f" {codec}"
 
         # Get output audio format
-        output_audio_format = "Unknown"
+        output_audio_format = ""
         if "status" in self._state:
             output_audio_info = self._state["status"]
             output_codec = output_audio_info.get("SurroundMode", "")
@@ -243,7 +245,23 @@ class HTP1Device(WebSocketDevice):
                 output_audio_format = f"{output_channels}"
                 if output_codec:
                     output_audio_format += f" {output_codec}"
+        
+        # Get current Dirac slot name
+        current_dirac_slot = "None"
+        current_dirac_slot_name = "None"
+        if "cal" in self._state:
+            cal = self._state["cal"]
+            diracstatus = cal.get("diracactive", False)
+            if diracstatus == "on":
+                current_dirac_slot = cal.get("currentdiracslot", "")
+                current_dirac_slot_name = cal.get("slots", "")[current_dirac_slot].get("name", "")
+            elif diracstatus == "bypass":
+                current_dirac_slot_name = "Dirac Bypass"
+            else :
+                current_dirac_slot_name = "Dirac Off"
 
+
+            
         # Get video mode
         video_mode = "-----"
         if "videostat" in self._state:
@@ -332,7 +350,7 @@ class HTP1Device(WebSocketDevice):
                 sound_mode_sensor_id,
                 {
                     SensorAttributes.STATE: sound_mode,
-                    SensorAttributes.VALUE: sound_mode,
+                    SensorAttributes.VALUE: sound_mode_display_values.get(sound_mode, sound_mode),
                 }
             )
 
@@ -353,6 +371,16 @@ class HTP1Device(WebSocketDevice):
             {
                 SensorAttributes.STATE: output_audio_format,
                 SensorAttributes.VALUE: output_audio_format,
+            }
+        )
+
+        # Current Dirac Slot Name Sensor
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            current_dirac_slot_name_sensor_id,
+            {
+                SensorAttributes.STATE: current_dirac_slot_name,
+                SensorAttributes.VALUE: current_dirac_slot_name,
             }
         )
 
@@ -477,22 +505,17 @@ class HTP1Device(WebSocketDevice):
         return await self._send_transaction([
             {"op": "replace", "path": "/upmix/select", "value": sound_mode}
         ])
+        
 
-    async def send_menu_command(self, command: str) -> bool:
-        """Send menu navigation command."""
+    async def send_command(self, command: str) -> bool:
+        """Send menu navigat'ion command."""
         _LOG.info("[%s] Sending menu command: %s", self.log_id, command)
 
         # Map commands to HTP-1 menu operations
         # The HTP-1 uses a menu system accessible via the front panel
         # Commands are sent as button presses
         command_map = {
-            "up": "menu_up",
-            "down": "menu_down",
-            "left": "menu_left",
-            "right": "menu_right",
-            "enter": "menu_enter",
-            "back": "menu_back",
-            "home": "menu_home",
+            "send_avcui: hpe": "send_avcui: hpe"
         }
 
         htp1_command = command_map.get(command)

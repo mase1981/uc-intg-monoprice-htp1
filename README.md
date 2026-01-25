@@ -50,7 +50,6 @@ Control all available input sources:
 - **HDMI Inputs** - All configured HDMI inputs
 - **Analog Inputs** - Stereo and multichannel analog
 - **Digital Inputs** - Coaxial and optical
-- **ARC Input** - HDMI ARC support
 - **Other Sources** - USB, network streaming, etc.
 - **Custom Names** - Uses your configured input names
 
@@ -67,8 +66,6 @@ Control all available input sources:
 Pre-configured button layout optimized for Remote UI:
 - **Power Control** - Toggle power button
 - **Volume Controls** - Volume up/down, mute buttons
-- **Navigation** - D-pad (up, down, left, right, enter)
-- **Menu Navigation** - Back, Home buttons
 - **Activity Support** - All buttons available as simple commands
 
 #### **Activity Integration**
@@ -85,6 +82,7 @@ Real-time monitoring of receiver state:
 - **Sound Mode Sensor** - Active sound mode/upmix
 - **Audio Format Sensor** - Detected audio codec and channels
 - **Output Audio Format Sensor** - Detected output audio codec and output channels
+- **Current Calibration Sensor** - Displays the Current Dirac Calibration Name, Dirac Bybass, or Dirac Off 
 - **Video Mode Sensor** - Current video resolution and HDR format
 - **Connection Sensor** - Integration connection status
 
@@ -199,8 +197,6 @@ The media player entity provides complete control:
 The remote entity provides:
 - **Power Button**: Toggle power
 - **Volume Buttons**: Up, Down, Mute
-- **Navigation Buttons**: Up, Down, Left, Right, Enter
-- **Menu Buttons**: Back, Home
 - **Activity Support**: All buttons work in activities
 
 ### Sensor Entities

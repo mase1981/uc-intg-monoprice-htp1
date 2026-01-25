@@ -122,6 +122,27 @@ class HTP1OutputAudioFormatSensor(Sensor):
             },
         )
 
+class HTP1CurrentDiracSlotNameSensor(Sensor):
+    """Sensor for current output audio format."""
+
+    def __init__(self, device_config: HTP1Config, device: HTP1Device):
+        """Initialize the output audio format sensor."""
+        self._device = device
+        self._device_config = device_config
+
+        entity_id = f"sensor.{device_config.identifier}_current_dirac_slot_name"
+
+        super().__init__(
+            entity_id,
+            f"{device_config.name} Current Dirac Slot Name",
+            [],  # No features
+            {
+                Attributes.STATE: "Unknown",
+                Attributes.VALUE: None,
+                Attributes.UNIT: None,
+            },
+        )
+
 class HTP1VideoModeSensor(Sensor):
     """Sensor for current video mode."""
 

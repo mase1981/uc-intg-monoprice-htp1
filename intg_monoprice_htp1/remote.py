@@ -25,13 +25,6 @@ SIMPLE_COMMANDS = [
     "VOLUME_UP",
     "VOLUME_DOWN",
     "MUTE",
-    "CURSOR_UP",
-    "CURSOR_DOWN",
-    "CURSOR_LEFT",
-    "CURSOR_RIGHT",
-    "CURSOR_ENTER",
-    "BACK",
-    "HOME",
 ]
 
 
@@ -46,7 +39,7 @@ class HTP1Remote(Remote):
         entity_id = f"remote.{device_config.identifier}"
         entity_name = f"{device_config.name} Remote"
 
-        features = [Features.SEND_CMD]
+        features = [Features.TOGGLE]
         attributes = {Attributes.STATE: "UNAVAILABLE"}
 
         # Define user interface with button layout
@@ -63,15 +56,6 @@ class HTP1Remote(Remote):
                         {"type": "icon", "icon": "uc:up-arrow", "command": {"cmd_id": "VOLUME_UP"}, "location": {"x": 0, "y": 1}},
                         {"type": "icon", "icon": "uc:mute", "command": {"cmd_id": "MUTE"}, "location": {"x": 1, "y": 1}, "size": {"width": 2, "height": 1}},
                         {"type": "icon", "icon": "uc:down-arrow", "command": {"cmd_id": "VOLUME_DOWN"}, "location": {"x": 3, "y": 1}},
-                        # Row 3-4: D-Pad
-                        {"type": "icon", "icon": "uc:up-arrow", "command": {"cmd_id": "CURSOR_UP"}, "location": {"x": 1, "y": 2}},
-                        {"type": "icon", "icon": "uc:left-arrow", "command": {"cmd_id": "CURSOR_LEFT"}, "location": {"x": 0, "y": 3}},
-                        {"type": "text", "text": "OK", "command": {"cmd_id": "CURSOR_ENTER"}, "location": {"x": 1, "y": 3}, "size": {"width": 2, "height": 1}},
-                        {"type": "icon", "icon": "uc:right-arrow", "command": {"cmd_id": "CURSOR_RIGHT"}, "location": {"x": 3, "y": 3}},
-                        {"type": "icon", "icon": "uc:down-arrow", "command": {"cmd_id": "CURSOR_DOWN"}, "location": {"x": 1, "y": 4}},
-                        # Row 5: Navigation
-                        {"type": "text", "text": "Back", "command": {"cmd_id": "BACK"}, "location": {"x": 0, "y": 5}},
-                        {"type": "text", "text": "Home", "command": {"cmd_id": "HOME"}, "location": {"x": 3, "y": 5}},
                     ],
                 }
             ]
@@ -117,36 +101,12 @@ class HTP1Remote(Remote):
                     success = await self._device.mute(not muted)
                     return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                 return StatusCodes.SERVER_ERROR
-
-            # Navigation commands
-            elif cmd_id == "CURSOR_UP":
-                success = await self._device.send_menu_command("up")
+            
+            elif cmd_id == "send_cmd":
+                c = params.get("command", "");
+                success = await self._device.send_command(c)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "CURSOR_DOWN":
-                success = await self._device.send_menu_command("down")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "CURSOR_LEFT":
-                success = await self._device.send_menu_command("left")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "CURSOR_RIGHT":
-                success = await self._device.send_menu_command("right")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "CURSOR_ENTER":
-                success = await self._device.send_menu_command("enter")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "BACK":
-                success = await self._device.send_menu_command("back")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            elif cmd_id == "HOME":
-                success = await self._device.send_menu_command("home")
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
+            
             return StatusCodes.NOT_IMPLEMENTED
 
         except Exception as err:
