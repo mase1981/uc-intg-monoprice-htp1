@@ -79,7 +79,9 @@ Real-time monitoring of receiver state:
 
 - **Input Sensor** - Currently selected input source
 - **Volume Sensor** - Current volume level in dB
-- **Sound Mode Sensor** - Active sound mode/upmix
+- **Loudness Sensor** -State of Loudness
+- **Mute Sensor** - Stae of Mute
+- **PEQ Status Sensor** - State of PEQ
 - **Audio Format Sensor** - Detected audio codec and channels
 - **Output Audio Format Sensor** - Detected output audio codec and output channels
 - **Current Calibration Sensor** - Displays the Current Dirac Calibration Name, Dirac Bybass, or Dirac Off 

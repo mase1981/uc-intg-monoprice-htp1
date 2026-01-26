@@ -167,6 +167,9 @@ class HTP1Device(WebSocketDevice):
         # Sensor IDs
         input_sensor_id = f"sensor.{self.identifier}_input"
         volume_sensor_id = f"sensor.{self.identifier}_volume"
+        loudness_sensor_id = f"sensor.{self.identifier}_loudness"
+        peq_sensor_id = f"sensor.{self.identifier}_peq"
+        mute_sensor_id = f"sensor.{self.identifier}_mute"
         sound_mode_sensor_id = f"sensor.{self.identifier}_sound_mode"
         audio_format_sensor_id = f"sensor.{self.identifier}_audio_format"
         output_audio_format_sensor_id = f"sensor.{self.identifier}_output_audio_format"
@@ -212,6 +215,17 @@ class HTP1Device(WebSocketDevice):
                     source_list.append(inp_info.get("label", inp_id))
                 if inp_id == input_id:
                     source = inp_info.get("label", inp_id)
+
+        # Get Loudness state
+        loudness_state = "off"
+        if "loudness" in self._state:
+            loudness_state = self._state["loudness"]
+
+        # Get PEQ state
+        peq_state = "off"
+        if "peq" in self._state:
+            peq_data = self._state["peq"]
+            peq_state = peq_data.get("peqsw", "off")
 
         # Get sound mode (upmix)
         sound_mode = None
@@ -342,6 +356,36 @@ class HTP1Device(WebSocketDevice):
                 SensorAttributes.VALUE: volume,
             }
         )
+
+        # Mute Sensor
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            mute_sensor_id,
+            {
+                SensorAttributes.STATE: "On" if muted else "Off",
+                SensorAttributes.VALUE: "On" if muted else "Off",
+            }
+        )
+
+        # Loudness Sensor
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            loudness_sensor_id,
+            {
+                SensorAttributes.STATE: loudness_state,
+                SensorAttributes.VALUE: loudness_state.capitalize(),
+            }
+        )  
+
+        # PEQ Sensor
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            peq_sensor_id,
+            {
+                 SensorAttributes.STATE: "On" if peq_state else "Off",
+                SensorAttributes.VALUE: "On" if peq_state else "Off",
+            }
+        )  
 
         # Sound Mode Sensor
         if sound_mode:

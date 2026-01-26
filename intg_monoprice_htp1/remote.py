@@ -24,7 +24,6 @@ SIMPLE_COMMANDS = [
     "POWER",
     "VOLUME_UP",
     "VOLUME_DOWN",
-    "MUTE",
 ]
 
 

@@ -57,6 +57,69 @@ class HTP1VolumeSensor(Sensor):
             device_class=DeviceClasses.CUSTOM,
         )
 
+class HTP1MutedSensor(Sensor):
+    """Sensor for mute status."""
+
+    def __init__(self, device_config: HTP1Config, device: HTP1Device):
+        """Initialize the volume sensor."""
+        self._device = device
+        self._device_config = device_config
+
+        entity_id = f"sensor.{device_config.identifier}_mute"
+
+        super().__init__(
+            entity_id,
+            f"{device_config.name} Mute",
+            [],  # No features
+            {
+                Attributes.STATE: "Unknown",
+                Attributes.VALUE: None,
+
+            },
+            device_class=DeviceClasses.CUSTOM,
+        )
+
+class HTP1LoudnessSensor(Sensor):
+    """Sensor for current loudness status."""
+
+    def __init__(self, device_config: HTP1Config, device: HTP1Device):
+        """Initialize the sound mode sensor."""
+        self._device = device
+        self._device_config = device_config
+
+        entity_id = f"sensor.{device_config.identifier}_loudness"
+
+        super().__init__(
+            entity_id,
+            f"{device_config.name} Loudness",
+            [],  # No features
+            {
+                Attributes.STATE: "Unknown",
+                Attributes.VALUE: None,
+                Attributes.UNIT: None,
+            },
+        )
+
+class HTP1PEQSensor(Sensor):
+    """Sensor for current PEQ status."""
+
+    def __init__(self, device_config: HTP1Config, device: HTP1Device):
+        """Initialize the PEQ sensor."""
+        self._device = device
+        self._device_config = device_config
+
+        entity_id = f"sensor.{device_config.identifier}_peq"
+
+        super().__init__(
+            entity_id,
+            f"{device_config.name} PEQ",
+            [],  # No features
+            {
+                Attributes.STATE: "Unknown",
+                Attributes.VALUE: None,
+                Attributes.UNIT: None,
+            },
+        )
 
 class HTP1SoundModeSensor(Sensor):
     """Sensor for current sound mode (upmix)."""
