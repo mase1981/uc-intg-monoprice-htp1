@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 from typing import Any
+import aiohttp
 import websockets
 from websockets.client import WebSocketClientProtocol
 from ucapi_framework import WebSocketDevice, DeviceEvents
@@ -552,20 +553,30 @@ class HTP1Device(WebSocketDevice):
         
 
     async def send_command(self, command: str) -> bool:
-        """Send menu navigat'ion command."""
+        """Send menu navigation command."""
         _LOG.info("[%s] Sending menu command: %s", self.log_id, command)
 
         # Map commands to HTP-1 menu operations
         # The HTP-1 uses a menu system accessible via the front panel
         # Commands are sent as button presses
-        command_map = {
+        avcui_command_map = {
             "send_avcui: hpe": "send_avcui: hpe"
         }
 
-        htp1_command = command_map.get(command)
+        htp1_command = avcui_command_map.get(command)
         if not htp1_command:
-            _LOG.warning("[%s] Unknown menu command: %s", self.log_id, command)
-            return False
-
+                _LOG.warning("[%s] Unknown menu command: %s", self.log_id, command)
+                return False
         # Send as a simple command (HTP-1 might use different protocol for menu)
         return await self.send_message(htp1_command)
+
+    async def send_http_command(self, command: str) -> bool:
+        """Send HTTP IR command."""
+        _LOG.info("[%s] Sending http command: %s", self.log_id, command)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://{self.address}/ircmd?code={command}") as response:
+                    return response.status == 200
+        except Exception as err:
+            _LOG.error("[%s] HTTP command error: %s", self.log_id, err)
+            return False
