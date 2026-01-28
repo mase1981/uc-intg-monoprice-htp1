@@ -488,7 +488,7 @@ class HTP1Device(WebSocketDevice):
         ])
 
     async def set_volume_level(self, level: float) -> bool:
-        """Set volume level (0..1)."""
+        """Set volume level (0..1) with safety protection against large jumps."""
         if not self._state or "cal" not in self._state:
             return False
 
@@ -504,6 +504,30 @@ class HTP1Device(WebSocketDevice):
         target_db = vpl + (level * span)
         target_db = int(round(target_db))
         target_db = max(int(vpl), min(int(vph), target_db))
+
+        # Safety protection: prevent large volume jumps that could damage speakers
+        current_volume = self._state.get("volume", 0)
+        volume_delta = abs(target_db - current_volume)
+        max_safe_jump = 5  # Maximum safe volume change in dB
+
+        if volume_delta > max_safe_jump:
+            # Clamp to safe incremental change
+            if target_db > current_volume:
+                clamped_db = current_volume + max_safe_jump
+            else:
+                clamped_db = current_volume - max_safe_jump
+
+            _LOG.warning(
+                "[%s] Volume jump protection: Requested change from %d dB to %d dB (%+d dB) exceeds safe limit. "
+                "Clamping to %d dB (%+d dB) to prevent speaker damage.",
+                self.log_id,
+                current_volume,
+                target_db,
+                target_db - current_volume,
+                clamped_db,
+                clamped_db - current_volume
+            )
+            target_db = clamped_db
 
         return await self.set_volume(target_db)
 
