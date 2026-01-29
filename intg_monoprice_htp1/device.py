@@ -261,7 +261,7 @@ class HTP1Device(WebSocketDevice):
                 if output_codec:
                     output_audio_format += f" {output_codec}"
         
-        # Get current Dirac slot name
+        # Get current Calibration slot name
         current_dirac_slot = "None"
         current_dirac_slot_name = "None"
         if "cal" in self._state:
@@ -275,6 +275,14 @@ class HTP1Device(WebSocketDevice):
             else :
                 current_dirac_slot_name = "Dirac Off"
 
+        # Get valid slots
+        available_slots = []
+        if "cal" in self._state:
+            cal = self._state["cal"]
+            for slot in cal.get("slots", False):
+                if slot.get("valid", False):
+                    available_slots.append(slot)
+        
 
             
         # Get video mode

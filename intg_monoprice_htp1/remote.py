@@ -8,12 +8,15 @@ Monoprice HTP-1 Remote entity.
 import logging
 from typing import Any
 from ucapi import StatusCodes
+from ucapi.ui import Buttons
 from ucapi.remote import (
     Attributes,
     Commands,
     Features,
     Remote,
+
 )
+from intg_monoprice_htp1 import media_player
 from intg_monoprice_htp1.config import HTP1Config
 from intg_monoprice_htp1.device import HTP1Device
 
@@ -107,24 +110,106 @@ class HTP1Remote(Remote):
         features = [Features.TOGGLE]
         attributes = {Attributes.STATE: "UNAVAILABLE"}
 
+
+        # Define button to command mapping
+        remote_mapping= [
+            {
+                "button": Buttons.VOLUME_UP,
+                "short_press": {"cmd_id": media_player.Commands.VOLUME_UP},
+            },
+            {
+                "button": Buttons.VOLUME_DOWN,
+                "short_press": {"cmd_id": media_player.Commands.VOLUME_DOWN},
+            },
+            {
+                "button": Buttons.CHANNEL_UP,
+                "short_press": {"cmd_id": "Dialog Up"},
+            },
+            {
+                "button": Buttons.CHANNEL_DOWN,
+                "short_press": {"cmd_id": "Dialog Down"},
+            },
+            {
+                "button": Buttons.MUTE,
+                "short_press": {"cmd_id": media_player.Commands.MUTE_TOGGLE},
+            },
+        ]
+
         # Define user interface with button layout
         user_interface = {
             "pages": [
-                {
+                 {
                     "page_id": "main",
                     "name": "Main",
-                    "grid": {"width": 4, "height": 6},
+                    "grid": {"width": 9, "height": 5},
                     "items": [
-                        # Row 1: Power
-                        {"type": "text", "text": "Power", "command": {"cmd_id": "POWER"}, "location": {"x": 1, "y": 0}, "size": {"width": 2, "height": 1}},
-                        # Row 2: Volume controls
-                        {"type": "icon", "icon": "uc:up-arrow", "command": {"cmd_id": "VOLUME_UP"}, "location": {"x": 0, "y": 1}},
-                        {"type": "icon", "icon": "uc:mute", "command": {"cmd_id": "MUTE"}, "location": {"x": 1, "y": 1}, "size": {"width": 2, "height": 1}},
-                        {"type": "icon", "icon": "uc:down-arrow", "command": {"cmd_id": "VOLUME_DOWN"}, "location": {"x": 3, "y": 1}},
+                        # Row 1: 
+                        {"type": "text", "text": "1", "command": {"cmd_id": "User Input 1"}, "location": {"x": 0, "y": 0}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "2", "command": {"cmd_id": "User Input 2"}, "location": {"x": 3, "y": 0}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "3", "command": {"cmd_id": "User Input 3"}, "location": {"x": 6, "y": 0}, "size": {"width": 3, "height": 1}},
+                         # Row 2: 
+                        {"type": "text", "text": "4", "command": {"cmd_id": "User Input 4"}, "location": {"x": 0, "y": 1}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "5", "command": {"cmd_id": "User Input 5"}, "location": {"x": 3, "y": 1}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "6", "command": {"cmd_id": "User Input 6"}, "location": {"x": 6, "y": 1}, "size": {"width": 3, "height": 1}},
+                        # Row 3:
+                        {"type": "text", "text": "7", "command": {"cmd_id": "User Input 7"}, "location": {"x": 0, "y": 2}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "8", "command": {"cmd_id": "User Input 8"}, "location": {"x": 3, "y": 2}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "9", "command": {"cmd_id": "User Input 9"}, "location": {"x": 6, "y": 2}, "size": {"width": 3, "height": 1}},
+                        # Row 4
+                        {"type": "text", "text": "INFO", "command": {"cmd_id": "Info"}, "location": {"x": 0, "y": 3}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "LAST", "command": {"cmd_id": "Last Input"}, "location": {"x": 3, "y": 3}, "size": {"width": 3, "height": 1}},
+                        {"type": "text", "text": "DIM", "command": {"cmd_id": "Dim"}, "location": {"x": 6, "y": 3}, "size": {"width": 3, "height": 1}},
+                        # Row 5
+                        {"type": "text", "text": "RED", "command": {"cmd_id": "Red"}, "location": {"x": 0, "y": 3}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "GREEN", "command": {"cmd_id": "Green"}, "location": {"x": 2, "y": 3}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "YELLOW", "command": {"cmd_id": "Yellow"}, "location": {"x": 5, "y": 3}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "BLUE", "command": {"cmd_id": "Blue"}, "location": {"x": 7, "y": 3}, "size": {"width": 2, "height": 1}},
+           ],
+        },
+        {
+                    "page_id": "pad",
+                    "name": "Pad",
+                    "grid": {"width": 3, "height": 3},
+                    "items": [
+                        # Row 1: Top buttons
+                        {"type": "text", "text": "HDMI+", "command": {"cmd_id": "HDMI+"}, "location": {"x": 0, "y": 0}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "NATIVE", "command": {"cmd_id": "Mode Native"}, "location": {"x": 1, "y": 0}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "STRM+", "command": {"cmd_id": "Stream+"}, "location": {"x": 2, "y": 0}, "size": {"width": 1, "height": 1}},
+                        # Row 2: Middle buttons
+                        {"type": "text", "text": "DTS", "command": {"cmd_id": "Mode Neural-X"}, "location": {"x": 0, "y": 1}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "DIRECT", "command": {"cmd_id": "Mode None"}, "location": {"x": 1, "y": 1}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "DOLBY", "command": {"cmd_id": "Mode Dolby Sur"}, "location": {"x": 2, "y": 0}, "size": {"width": 1, "height": 1}},
+                        # Row 3: Bottom buttons
+                        {"type": "text", "text": "SPID+", "command": {"cmd_id": "SPID+"}, "location": {"x": 0, "y": 2}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "AURO 3D", "command": {"cmd_id": "Mode Auro"}, "location": {"x": 1, "y": 2}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "ANA+", "command": {"cmd_id": "Analog+"}, "location": {"x": 2, "y": 2}, "size": {"width": 1, "height": 1}},
                     ],
-                }
-            ]
+                },
+                {
+                    "page_id": "toggles",
+                    "name": "Toggles",
+                    "grid": {"width": 3, "height": 4},
+                    "items": [
+                        # Row 1: 
+                        {"type": "text", "text": "DIRAC", "command": {"cmd_id": "Dirac Toggle"}, "location": {"x": 0, "y": 0}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "A", "command": {"cmd_id": "A"}, "location": {"x": 1, "y": 0}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "PRESET 1", "command": {"cmd_id": "PRESET 1"}, "location": {"x": 2, "y": 0}, "size": {"width": 1, "height": 1}},
+                         # Row 2: 
+                        {"type": "text", "text": "NIGHT", "command": {"cmd_id": "Night Toggle"}, "location": {"x": 0, "y": 1}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "B", "command": {"cmd_id": "B"}, "location": {"x": 1, "y": 1}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "PRESET 2", "command": {"cmd_id": "PRESET 2"}, "location": {"x": 2, "y": 1}, "size": {"width": 1, "height": 1}},
+                        # Row 3:
+                        {"type": "text", "text": "LOUD", "command": {"cmd_id": "Loudness Toggle"}, "location": {"x": 0, "y": 2}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "C", "command": {"cmd_id": "C"}, "location": {"x": 1, "y": 2}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "PRESET 3", "command": {"cmd_id": "PRESET 3"}, "location": {"x": 2, "y": 2}, "size": {"width": 1, "height": 1}},
+                        # Row 4
+                        {"type": "text", "text": "BT PAIR", "command": {"cmd_id": "BT PAIR"}, "location": {"x": 0, "y": 3}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "D", "command": {"cmd_id": "D"}, "location": {"x": 1, "y": 3}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "PRESET 4", "command": {"cmd_id": "PRESET 4"}, "location": {"x": 2, "y": 3}, "size": {"width": 1, "height": 1}},
+            ],
         }
+    ]
+}
 
         # Create remote with UI and simple commands
         super().__init__(
@@ -133,6 +218,7 @@ class HTP1Remote(Remote):
             features,
             attributes,
             simple_commands=SIMPLE_COMMANDS,
+            button_mapping= remote_mapping,
             ui_pages=user_interface["pages"],
             cmd_handler=self.handle_command,
         )
