@@ -160,10 +160,10 @@ class HTP1Remote(Remote):
                         {"type": "text", "text": "LAST", "command": {"cmd_id": "Last Input"}, "location": {"x": 3, "y": 3}, "size": {"width": 3, "height": 1}},
                         {"type": "text", "text": "DIM", "command": {"cmd_id": "Dim"}, "location": {"x": 6, "y": 3}, "size": {"width": 3, "height": 1}},
                         # Row 5
-                        {"type": "text", "text": "RED", "command": {"cmd_id": "Red"}, "location": {"x": 0, "y": 3}, "size": {"width": 2, "height": 1}},
-                        {"type": "text", "text": "GREEN", "command": {"cmd_id": "Green"}, "location": {"x": 2, "y": 3}, "size": {"width": 2, "height": 1}},
-                        {"type": "text", "text": "YELLOW", "command": {"cmd_id": "Yellow"}, "location": {"x": 5, "y": 3}, "size": {"width": 2, "height": 1}},
-                        {"type": "text", "text": "BLUE", "command": {"cmd_id": "Blue"}, "location": {"x": 7, "y": 3}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "RED", "command": {"cmd_id": "Red"}, "location": {"x": 0, "y": 4}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "GREEN", "command": {"cmd_id": "Green"}, "location": {"x": 2, "y": 4}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "YELLOW", "command": {"cmd_id": "Yellow"}, "location": {"x": 5, "y": 4}, "size": {"width": 2, "height": 1}},
+                        {"type": "text", "text": "BLUE", "command": {"cmd_id": "Blue"}, "location": {"x": 7, "y": 4}, "size": {"width": 2, "height": 1}},
            ],
         },
         {
