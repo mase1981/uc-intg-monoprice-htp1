@@ -36,6 +36,10 @@ class HTP1Device(WebSocketDevice):
         self.events.on(DeviceEvents.CONNECTED, self._on_connected)
         self.events.on(DeviceEvents.DISCONNECTED, self._on_disconnected)
 
+        # Select entity state
+        self.current_slot = ""
+        self.slot_names = ["0"]
+
     async def _on_connected(self, identifier: str) -> None:
         """Handle connection established."""
         _LOG.info("[%s] WebSocket connected", self.log_id)
@@ -51,6 +55,7 @@ class HTP1Device(WebSocketDevice):
             await asyncio.wait_for(self._state_ready.wait(), timeout=5.0)
             _LOG.info("[%s] Initial state received", self.log_id)
             self._emit_update()
+            self._emit_select_updates()
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
@@ -60,6 +65,7 @@ class HTP1Device(WebSocketDevice):
         self._state = None
         self._state_ready.clear()
         self._emit_update()
+        self._emit_select_updates()
 
     @property
     def identifier(self) -> str:
@@ -132,6 +138,7 @@ class HTP1Device(WebSocketDevice):
                 self._state_ready.set()
                 _LOG.debug("[%s] Received full state", self.log_id)
                 self._emit_update()
+                self._emit_select_updates()
 
             elif cmd == "msoupdate":
                 # Incremental state update
@@ -156,6 +163,7 @@ class HTP1Device(WebSocketDevice):
                     target[final] = value
 
                 self._emit_update()
+                self._emit_select_updates()
 
         except Exception as err:
             _LOG.error("[%s] Message processing error: %s", self.log_id, err)
@@ -269,11 +277,13 @@ class HTP1Device(WebSocketDevice):
             diracstatus = cal.get("diracactive", False)
             if diracstatus == "on":
                 current_dirac_slot = cal.get("currentdiracslot", "")
+                self.slot_num = str(current_dirac_slot)
                 current_dirac_slot_name = cal.get("slots", "")[current_dirac_slot].get("name", "")
             elif diracstatus == "bypass":
                 current_dirac_slot_name = "Dirac Bypass"
             else :
                 current_dirac_slot_name = "Dirac Off"
+            self.current_slot = current_dirac_slot_name
 
         # Get valid slots
         available_slots = []
@@ -281,7 +291,8 @@ class HTP1Device(WebSocketDevice):
             cal = self._state["cal"]
             for slot in cal.get("slots", False):
                 if slot.get("valid", False):
-                    available_slots.append(slot)
+                    available_slots.append(slot.get("name", ""))
+            self.slot_names = available_slots
         
 
             
@@ -457,6 +468,21 @@ class HTP1Device(WebSocketDevice):
             }
         )
 
+    def _emit_select_updates(self):
+        """Emit select entity updates."""
+        # Claibration select entity
+        calibration_entity_id  = f"select.{self.identifier}_calibration"
+        self.events.emit(
+            DeviceEvents.UPDATE,
+            calibration_entity_id,
+            {
+                "state": "ON",
+                "current_option": self.current_slot,
+                "options": self.slot_names,
+            }
+        )
+
+
     async def send_message(self, message: str) -> bool:
         """Send message via WebSocket."""
         try:
@@ -581,6 +607,13 @@ class HTP1Device(WebSocketDevice):
         _LOG.info("[%s] Selecting sound mode: %s", self.log_id, sound_mode)
         return await self._send_transaction([
             {"op": "replace", "path": "/upmix/select", "value": sound_mode}
+        ])
+    
+    async def select_calibration(self, slot_name: str) -> bool:
+        """Select calibration slot."""
+        _LOG.info("[%s] Selecting sound mode: %s", self.log_id, slot_name)
+        return await self._send_transaction([
+            {"op": "replace", "path": "/cal/currentdiracslot", "value": self.slot_names.index(slot_name)}
         ])
         
 

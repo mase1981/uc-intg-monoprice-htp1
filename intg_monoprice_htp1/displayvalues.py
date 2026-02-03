@@ -6,4 +6,3 @@ sound_mode_display_values = {
     'native': 'NATIVE',
     'stereo': 'STEREO'
 }
-

@@ -1,6 +1,6 @@
 {
   "driver_id": "monoprice_htp1",
-  "version": "1.3.4",
+  "version": "1.4.1",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Monoprice HTP-1"
@@ -14,7 +14,7 @@
     "email": "meir.miyara@gmail.com"
   },
   "home_page": "https://github.com/mase1981/uc-intg-monoprice-htp1",
-  "release_date": "2026-01-28",
+  "release_date": "2026-02-03",
   "setup_data_schema": {
     "title": {
       "en": "Monoprice HTP-1 Setup"

@@ -178,7 +178,7 @@ class HTP1Remote(Remote):
                         # Row 2: Middle buttons
                         {"type": "text", "text": "DTS", "command": {"cmd_id": "Mode Neural-X"}, "location": {"x": 0, "y": 1}, "size": {"width": 1, "height": 1}},
                         {"type": "text", "text": "DIRECT", "command": {"cmd_id": "Mode None"}, "location": {"x": 1, "y": 1}, "size": {"width": 1, "height": 1}},
-                        {"type": "text", "text": "DOLBY", "command": {"cmd_id": "Mode Dolby Sur"}, "location": {"x": 2, "y": 0}, "size": {"width": 1, "height": 1}},
+                        {"type": "text", "text": "DOLBY", "command": {"cmd_id": "Mode Dolby Sur"}, "location": {"x": 2, "y": 1}, "size": {"width": 1, "height": 1}},
                         # Row 3: Bottom buttons
                         {"type": "text", "text": "SPID+", "command": {"cmd_id": "SPID+"}, "location": {"x": 0, "y": 2}, "size": {"width": 1, "height": 1}},
                         {"type": "text", "text": "AURO 3D", "command": {"cmd_id": "Mode Auro"}, "location": {"x": 1, "y": 2}, "size": {"width": 1, "height": 1}},
