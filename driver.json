@@ -1,11 +1,11 @@
 {
   "driver_id": "monoprice_htp1",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Monoprice HTP-1"
   },
-  "icon": "uc:cloud-music",
+  "icon": "custom:driver-logo.png",
   "description": {
     "en": "Integration for Monoprice HTP-1 AV receiver with full media player support"
   },
@@ -14,7 +14,7 @@
     "email": "meir.miyara@gmail.com"
   },
   "home_page": "https://github.com/mase1981/uc-intg-monoprice-htp1",
-  "release_date": "2026-02-04",
+  "release_date": "2026-02-20",
   "setup_data_schema": {
     "title": {
       "en": "Monoprice HTP-1 Setup"

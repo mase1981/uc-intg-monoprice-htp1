@@ -53,12 +53,15 @@ Control all available input sources:
 - **Other Sources** - USB, network streaming, etc.
 - **Custom Names** - Uses your configured input names
 
-#### **Sound Mode Control**
+#### **Sound Mode Control including select entity**
 - **Upmix Selection** - Choose from available upmix modes
 - **DTS Neural:X** - Immersive audio processing
 - **Dolby Surround** - Dolby upmixing
 - **Stereo/Native** - Direct audio modes
 - **Real-time Feedback** - Current mode displayed
+
+#### **Calibration Control via select entity**
+- **Dynamically reads avaialble Calibrations slots** - Choose from available calibrations
 
 ### 🎮 **Remote Entity**
 
