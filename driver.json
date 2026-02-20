@@ -5,7 +5,7 @@
   "name": {
     "en": "Monoprice HTP-1"
   },
-  "icon": "custom:driver-logo.png",
+  "icon": "custom:monoprice-logo.png",
   "description": {
     "en": "Integration for Monoprice HTP-1 AV receiver with full media player support"
   },
