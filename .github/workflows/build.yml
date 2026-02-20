@@ -64,7 +64,7 @@ jobs:
           mv dist/driver/* artifacts/bin/
           cp driver.json artifacts/
           # Copy icon file to archive root (required format: custom:$ICON_FILENAME)
-          [[ -f assets/driver-logo.png ]] && cp assets/driver-logo.png artifacts/
+          [[ -f assets/monoprice-logo.png ]] && cp assets/monoprice-logo.png artifacts/
           echo "ARTIFACT_NAME=uc-intg-${{ env.DRIVER_ID }}-${{ env.VERSION }}-aarch64" >> $GITHUB_ENV
           echo "=== Artifact structure ==="
           ls -laR artifacts/
