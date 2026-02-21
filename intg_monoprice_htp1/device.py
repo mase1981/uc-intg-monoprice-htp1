@@ -640,7 +640,9 @@ class HTP1Device(WebSocketDevice):
         # The HTP-1 uses a menu system accessible via the front panel
         # Commands are sent as button presses
         avcui_command_map = {
-            "send_avcui: hpe": "send_avcui: hpe"
+            "send_avcui: hpe": "send_avcui: hpe",
+            "send_avcui: dialnorm off": "send_avcui: dialnorm off",
+            "send_avcui: dialnorm on": "send_avcui: dialnorm on",
         }
 
         htp1_command = avcui_command_map.get(command)

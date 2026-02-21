@@ -257,7 +257,7 @@ class HTP1Remote(Remote):
                 c = params.get("command", "");
                 http_cmd = map_http_commands.get(c)
                 if not http_cmd:
-                    success = await self._device.send_hmand(c)
+                    success = await self._device.send_command(c)
                 else:
                     success = await self._device.send_http_command(http_cmd)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
