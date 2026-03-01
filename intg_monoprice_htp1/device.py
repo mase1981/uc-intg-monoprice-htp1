@@ -230,7 +230,7 @@ class HTP1Device(WebSocketDevice):
                 if inp_id == input_id:
                     source = inp_info.get("label", inp_id)
                     self.current_source = source
-            self.input_names=[source_list]
+            self.input_names = source_list
 
         # Get Loudness state
         loudness_state = "off"
