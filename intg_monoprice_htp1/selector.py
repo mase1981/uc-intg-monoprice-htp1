@@ -20,7 +20,7 @@ class HTP1CInputSelect(Select):
         self._device_config = device_config
 
         entity_id = f"select.{device_config.identifier}_inputs"
-        entity_name = f"{device_config.name} Input"
+        entity_name = f"{device_config.name} Inputs"
 
         attributes = {
             Attributes.STATE: States.UNAVAILABLE,
