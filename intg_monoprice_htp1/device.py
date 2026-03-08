@@ -42,6 +42,10 @@ class HTP1Device(WebSocketDevice):
         self.input_names = ["0"]
         self.slot_names = ["0"]
         self.surround_mode = ""
+        self.vpl = -80
+        self.vph = 12
+        self.volume = -30
+        self.zp = 0
 
     async def _on_connected(self, identifier: str) -> None:
         """Handle connection established."""
@@ -216,6 +220,13 @@ class HTP1Device(WebSocketDevice):
         # Extract state information
         power = self._state.get("powerIsOn", False)
         volume = self._state.get("volume", 0)
+        if "cal" in self._state:
+            cal = self._state["cal"]
+            zp = cal.get("zeroPoint", 0)
+
+            self.zp = zp
+            volume -= zp  # Adjust volume with zero point offset
+            self.volume = volume
         muted = self._state.get("muted", False)
         input_id = self._state.get("input")
 
@@ -336,7 +347,9 @@ class HTP1Device(WebSocketDevice):
         if "cal" in self._state:
             cal = self._state["cal"]
             vpl = cal.get("vpl", -80)
+            self.vpl = vpl
             vph = cal.get("vph", 12)
+            self.vph = vph
             span = vph - vpl
             if span > 0:
                 volume_level = max(0.0, min(1.0, (volume - vpl) / span))
@@ -617,6 +630,9 @@ class HTP1Device(WebSocketDevice):
         if not self._state:
             return False
         current = self._state.get("volume", 0)
+        if current >= self.vph:
+            _LOG.info("[%s] Already at Max Volume %s", self.log_id, self)
+            return True # Already at or above max volume
         return await self.set_volume(current + 1)
 
     async def volume_down(self) -> bool:
@@ -624,6 +640,10 @@ class HTP1Device(WebSocketDevice):
         if not self._state:
             return False
         current = self._state.get("volume", 0)
+        limit = self.vpl - self.zp
+        if current - self.zp <= limit :
+            _LOG.info("[%s] Already at Min Volume %s", self.log_id, self)
+            return True  # Already at or below min volume
         return await self.set_volume(current - 1)
 
     async def mute(self, muted: bool) -> bool:
