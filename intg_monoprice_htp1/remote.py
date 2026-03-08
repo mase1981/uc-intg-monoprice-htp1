@@ -294,7 +294,7 @@ class HTP1Remote(Remote):
 
 
 map_http_commands = {
- "VOLUMN_DOWN": "09f6",
+ "VOLUME_DOWN": "09f6",
 "Mute Toggle": "0af5",
 "VOLUME_UP": "0bf4",
 "Mode None": "1be4",
