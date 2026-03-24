@@ -46,6 +46,7 @@ async def _fetch_beq_catalogue() -> list[dict]:
         async with aiohttp.ClientSession() as session:
             async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
+                    _LOG.error("BEQ catalogue fetch URL: %s", BEQ_DB_URL)
                     _LOG.error("BEQ catalogue fetch failed: %d", resp.status)
                     return []
                 data = await resp.json(content_type=None)
