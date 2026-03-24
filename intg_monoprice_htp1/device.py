@@ -24,13 +24,6 @@ FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
 
-def _num(v):
-        """Convert float to int when the value is a whole number (e.g. 10.0 -> 10)."""
-        if isinstance(v, float) and v == int(v):
-            return int(v)
-        return v
-
-
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
 
@@ -434,15 +427,15 @@ class HTP1Device(WebSocketDevice):
         except Exception as err:
             _LOG.error("[%s] HTTP command error: %s", self.log_id, err)
             return False
-        
+
     def _get_sub_channels(self) -> list[str]:
         if not self._state:
             return ["sub1"]
-        
-        _peq_location = self._state.get("peq", {}).get("location", "")
-        if (_peq_location == "pre"):
+
+        peq_location = self._state.get("peq", {}).get("location", "")
+        if peq_location == "pre":
             return ["sub1"]
-            
+
         speakers = self._state.get("speakers", {}).get("groups", {})
         subs = []
         for key, val in speakers.items():
@@ -460,9 +453,7 @@ class HTP1Device(WebSocketDevice):
         for i in range(start_slot, min(BEQ_SLOT_END + 1, len(slots))):
             channels = slots[i].get("channels", {})
             ch_data = channels.get(ch, {})
-            gain = ch_data.get("gaindB", 0)
-            beqchan = ch_data.get("beq")
-            if ch_data.get("gaindB", 0) == 0 or  ch_data.get("beq"):
+            if ch_data.get("gaindB", 0) == 0 or ch_data.get("beq"):
                 return i
         return None
 
@@ -509,8 +500,6 @@ class HTP1Device(WebSocketDevice):
         next_slot = BEQ_SLOT_START
 
         for filt in filters:
-           
-
             ft = FILTER_TYPE_MAP.get(filt.get("type", "PeakingEQ"), 0)
             freq = filt.get("freq", 100)
             gain = filt.get("gain", 0)

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 
-from aiohttp.web_routedef import options
 from ucapi import StatusCodes
 from ucapi.api_definitions import (
     BrowseMediaItem,
@@ -43,8 +42,7 @@ async def _fetch_beq_catalogue() -> list[dict]:
 
     _LOG.info("Fetching BEQ catalogue from %s", BEQ_DB_URL)
     try:
-        # Bypass SSL Check
-        connector = aiohttp.TCPConnector(ssl=False) 
+        connector = aiohttp.TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
@@ -92,7 +90,7 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
         can_play=True,
         can_browse=False,
         subtitle=subtitle,
-        #image_url=image_url,
+        image_url=image_url,
     )
 
 
@@ -108,11 +106,8 @@ async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | 
 
     if media_type == "beq_category":
         paging = options.paging
-        limit: int = int(
-        (paging.limit if paging and paging.limit else None)
-        or ITEMS_PER_PAGE
-    )
-        page: int = int((paging.page if paging and paging.page else None) or 1)
+        limit = int((paging.limit if paging and paging.limit else None) or ITEMS_PER_PAGE)
+        page = int((paging.page if paging and paging.page else None) or 1)
         return await _browse_category(media_id, page)
 
     return StatusCodes.NOT_FOUND
@@ -124,13 +119,8 @@ async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | 
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
 
     paging = options.paging
-    page =paging.page
-    limit: int = int(
-        (paging.limit if paging and paging.limit else None)
-        or ITEMS_PER_PAGE
-    )
-    #page: int = int((paging.page if paging and paging.page else None) or 1)
-
+    page = paging.page
+    limit = int((paging.limit if paging and paging.limit else None) or ITEMS_PER_PAGE)
     catalogue = await _fetch_beq_catalogue()
     start_index = (page - 1) * ITEMS_PER_PAGE
     end_index = start_index + ITEMS_PER_PAGE
