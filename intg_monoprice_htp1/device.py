@@ -435,19 +435,14 @@ class HTP1Device(WebSocketDevice):
             _LOG.error("[%s] HTTP command error: %s", self.log_id, err)
             return False
         
-    async def send_raw_ops(self, ops: list[dict]) -> bool:
-        """Send a list of raw JSON-Patch ops via changemso."""
-        if not ops:
-            return True
-        if not self._is_connected:
-            raise Exception("Not connected")
-        payload = json.dumps(ops, separators=(",", ":"))
-        await self._send_transaction(f"changemso {payload}")
-        return True
-
     def _get_sub_channels(self) -> list[str]:
         if not self._state:
             return ["sub1"]
+        
+        _peq_location = self._state.get("peq", {}).get("location", "")
+        if (_peq_location == "pre"):
+            return ["sub1"]
+            
         speakers = self._state.get("speakers", {}).get("groups", {})
         subs = []
         for key, val in speakers.items():
@@ -456,21 +451,20 @@ class HTP1Device(WebSocketDevice):
                     subs.append(key)
         return subs or ["sub1"]
 
-    def _find_empty_peq_slot(self, start_slot: int = BEQ_SLOT_START) -> int | None:
+    def _find_empty_peq_slot(self, start_slot: int = BEQ_SLOT_START, ch: str | None = None) -> int | None:
         if not self._state:
             return None
         peq = self._state.get("peq", {})
         slots = peq.get("slots", [])
 
-        all_subs = self._get_sub_channels() 
-
-        for ch in all_subs:
-            for i in range(start_slot, min(BEQ_SLOT_END + 1, len(slots))):
-                channels = slots[i].get("channels", {})
-                ch_data = channels.get(ch, {})
-                if ch_data.get("gaindB", 0) == 0 or  ch_data.get("beq"):
-                    return i
-            return None
+        for i in range(start_slot, min(BEQ_SLOT_END + 1, len(slots))):
+            channels = slots[i].get("channels", {})
+            ch_data = channels.get(ch, {})
+            gain = ch_data.get("gaindB", 0)
+            beqchan = ch_data.get("beq")
+            if ch_data.get("gaindB", 0) == 0 or  ch_data.get("beq"):
+                return i
+        return None
 
     async def clear_beq(self) -> bool:
         """Clear all BEQ-tagged filters from all PEQ slots on all sub channels."""
@@ -479,7 +473,7 @@ class HTP1Device(WebSocketDevice):
         ops: list[dict] = []
         peq = self._state.get("peq", {})
         slots = peq.get("slots", [])
-        all_subs = ["sub1", "sub2", "sub3", "sub4", "sub5"]
+        all_subs = self._get_sub_channels()
 
         for i in range(min(16, len(slots))):
             channels = slots[i].get("channels", {})
@@ -515,10 +509,7 @@ class HTP1Device(WebSocketDevice):
         next_slot = BEQ_SLOT_START
 
         for filt in filters:
-            slot_idx = self._find_empty_peq_slot(next_slot)
-            if slot_idx is None:
-                _LOG.warning("[%s] No empty PEQ slot for BEQ filter", self.log_id)
-                break
+           
 
             ft = FILTER_TYPE_MAP.get(filt.get("type", "PeakingEQ"), 0)
             freq = filt.get("freq", 100)
@@ -526,6 +517,11 @@ class HTP1Device(WebSocketDevice):
             q = filt.get("q", 1)
 
             for ch in sub_channels:
+                slot_idx = self._find_empty_peq_slot(next_slot, ch)
+                if slot_idx is None:
+                    _LOG.warning("[%s] No empty PEQ slot for BEQ filter", self.log_id)
+                    break
+
                 ops.extend([
                     {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/Fc", "value": freq},
                     {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/gaindB", "value": gain},
