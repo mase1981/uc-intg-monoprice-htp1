@@ -124,23 +124,27 @@ async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | 
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
 
     paging = options.paging
+    page =paging.page
     limit: int = int(
         (paging.limit if paging and paging.limit else None)
         or ITEMS_PER_PAGE
     )
-    page: int = int((paging.page if paging and paging.page else None) or 1)
+    #page: int = int((paging.page if paging and paging.page else None) or 1)
 
     catalogue = await _fetch_beq_catalogue()
+    start_index = (page - 1) * ITEMS_PER_PAGE
+    end_index = start_index + ITEMS_PER_PAGE
+
     results = []
     for entry in catalogue:
         title = entry.get("title", "").lower()
         if query in title:
             results.append(_entry_to_item(entry))
-            if len(results) >= ITEMS_PER_PAGE:
+            if len(results) >= end_index:
                 break
 
     return SearchResults(
-        media=results,
+        media=results[start_index:end_index],
         pagination=Pagination(page, limit=len(results), count=len(results)),
     )
 
