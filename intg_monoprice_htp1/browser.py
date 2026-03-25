@@ -79,9 +79,6 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
     if audio_types:
         subtitle += f" | {audio_types}"
 
-    images = entry.get("images", [])
-    image_url = images[0] if images else ""
-
     return BrowseMediaItem(
         title=title + " " + author + "\n" + audio_types,
         media_class=MediaClass.TRACK,
@@ -90,7 +87,6 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
         can_play=True,
         can_browse=False,
         subtitle=subtitle,
-        image_url=image_url,
     )
 
 

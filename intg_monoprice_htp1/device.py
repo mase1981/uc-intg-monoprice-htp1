@@ -98,7 +98,9 @@ class HTP1Device(WebSocketDevice):
         return self._sensor_data.get(key, "")
 
     async def create_websocket(self) -> WebSocketClientProtocol:
-        _LOG.info("[%s] Creating WebSocket connection to %s", self.log_id, self.websocket_url)
+        _LOG.info(
+            "[%s] Creating WebSocket connection to %s", self.log_id, self.websocket_url
+        )
         logging.getLogger("websockets").setLevel(logging.INFO)
         self._ws = await websockets.connect(
             self.websocket_url,
