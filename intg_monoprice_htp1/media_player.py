@@ -79,7 +79,7 @@ class HTP1MediaPlayer(MediaPlayerEntity):
 
         self.update({
             Attributes.STATE: state,
-            Attributes.VOLUME: self._device.volume_pct,
+            Attributes.VOLUME: self._device.volume_db,
             Attributes.MUTED: self._device.muted,
             Attributes.SOURCE: self._device.current_source,
             Attributes.SOURCE_LIST: self._device.source_list,

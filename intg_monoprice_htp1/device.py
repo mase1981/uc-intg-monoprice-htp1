@@ -45,7 +45,6 @@ class HTP1Device(WebSocketDevice):
         self.sound_mode_display: str = ""
         self.surround_mode: str = ""
         self.volume_db: int = -30
-        self.volume_pct: int = 0
         self.muted: bool = False
         self.power: bool = False
         self.vpl: int = -80
@@ -197,12 +196,6 @@ class HTP1Device(WebSocketDevice):
             self.vph = cal.get("vph", 12)
             volume -= self.zp
         self.volume_db = volume
-
-        span = self.vph - self.vpl
-        if span > 0:
-            self.volume_pct = int(max(0, min(100, ((volume - self.vpl) / span) * 100)))
-        else:
-            self.volume_pct = 0
 
         input_id = self._state.get("input")
         source_list = []
