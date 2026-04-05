@@ -7,8 +7,10 @@ Monoprice HTP-1 media browser for BEQ catalogue.
 
 from __future__ import annotations
 
+from ast import If
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -32,14 +34,19 @@ _LOG = logging.getLogger(__name__)
 BEQ_DB_URL = "https://beqcatalogue.readthedocs.io/en/latest/database.json"
 ITEMS_PER_PAGE = 50
 
+BEQ_CACHE_LIFE = 86400  # seconds
 _beq_cache: list[dict] | None = None
+_beq_cache_timestamp: int | None = None
 
 
 async def _fetch_beq_catalogue() -> list[dict]:
     global _beq_cache
+    global _beq_cache_timestamp 
     if _beq_cache is not None:
-        return _beq_cache
-
+     
+        if int(time.time()) -  _beq_cache_timestamp < BEQ_CACHE_LIFE:
+            return _beq_cache
+ 
     _LOG.info("Fetching BEQ catalogue from %s", BEQ_DB_URL)
     try:
         connector = aiohttp.TCPConnector(ssl=False)
@@ -51,7 +58,9 @@ async def _fetch_beq_catalogue() -> list[dict]:
                     return []
                 data = await resp.json(content_type=None)
                 if isinstance(data, list):
+                    data.sort(key=lambda e: e.get("title", ""))
                     _beq_cache = data
+                    _beq_cache_timestamp = int(time.time())
                     _LOG.info("BEQ catalogue loaded: %d entries", len(data))
                     return data
     except Exception as err:
@@ -88,6 +97,11 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
         can_browse=False,
         subtitle=subtitle,
     )
+
+async def clear_cache() -> bool:
+    global _beq_cache
+    _beq_cache = None
+    return True
 
 
 async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | StatusCodes:
@@ -161,6 +175,17 @@ def _browse_root(device: HTP1Device) -> BrowseResults:
             ),
         )
 
+    items.append(
+            BrowseMediaItem(
+                title=f"Reload BEQ Info",
+                media_class=MediaClass.TRACK,
+                media_type="beq_reload",
+                media_id="beq:reload",
+                can_play=True,
+                can_browse=False,
+                subtitle="Reload BEQ information",
+            ),
+        )
     return BrowseResults(
         media=BrowseMediaItem(
             title=device.name,
