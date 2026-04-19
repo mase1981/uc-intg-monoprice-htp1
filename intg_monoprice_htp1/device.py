@@ -210,7 +210,7 @@ class HTP1Device(WebSocketDevice):
         self.source_list = source_list
 
         loudness_state = self._state.get("loudness", "off")
-        dialnorm_state = self._state.get("dialnorm", False)
+        night_mode_state = self._state.get("night", "off")
         peq_sw = self._state.get("peq", {}).get("peqsw", False)
         self.beq_active = self._state.get("peq", {}).get("beqActive", "")
 
@@ -275,8 +275,8 @@ class HTP1Device(WebSocketDevice):
             "volume": f"{self.volume_db}",
             "mute": "On" if self.muted else "Off",
             "loudness": str(loudness_state).capitalize() if isinstance(loudness_state, str) else ("On" if loudness_state else "Off"),
+            "night_mode": str(night_mode_state).capitalize() if isinstance(night_mode_state, str) else ("On" if night_mode_state else "Off"),
             "peq": "On" if peq_sw else "Off",
-            "dialnorm": "On" if dialnorm_state else "Off",
             "sound_mode": self.sound_mode_display,
             "audio_format": audio_format,
             "output_audio_format": output_audio_format,
@@ -367,11 +367,6 @@ class HTP1Device(WebSocketDevice):
             {"op": "replace", "path": "/muted", "value": muted}
         ])
 
-    async def dialnorm_toggle(self, dialnorm: bool) -> bool:
-        _LOG.info("[%s] Setting dialnorm to %s", self.log_id, dialnorm)
-        return await self._send_transaction([
-            {"op": "replace", "path": "/dialnorm", "value": dialnorm}
-        ])
 
     async def select_source(self, source: str) -> bool:
         _LOG.info("[%s] Selecting source: %s", self.log_id, source)
@@ -404,8 +399,6 @@ class HTP1Device(WebSocketDevice):
         _LOG.info("[%s] Sending menu command: %s", self.log_id, command)
         avcui_commands = {
             "send_avcui: hpe": "send_avcui: hpe",
-            "send_avcui: dialnorm off": "send_avcui: dialnorm off",
-            "send_avcui: dialnorm on": "send_avcui: dialnorm on",
         }
         htp1_command = avcui_commands.get(command)
         if not htp1_command:

@@ -85,7 +85,7 @@ Real-time monitoring of receiver state:
 - **Loudness Sensor** -State of Loudness
 - **Mute Sensor** - Stae of Mute
 - **PEQ Status Sensor** - State of PEQ
-- **Dialnorm Status Sensor - State of Dialnorm  
+- **Night Mode Status Sensor - State of Night Mode (Off also defeats Dialnorm)  
 - **Audio Format Sensor** - Detected audio codec and channels
 - **Output Audio Format Sensor** - Detected output audio codec and output channels
 - **Current Calibration Sensor** - Displays the Current Dirac Calibration Name, Dirac Bybass, or Dirac Off 
@@ -214,7 +214,7 @@ The remote entity provides:
 | Sound Mode Sensor | Active sound mode/upmix |
 | Loudness Sensor | On/Off |
 | PEQ Sensor | On/Off |
-| Dialnorm Sensor | On/Off |
+| Nightmode Sensor | On/Off |
 | Audio Format Sensor | Current audio codec and channel count |
 | Output Audio Format Sensor | Current output audio codec and output channel count |
 | Video Mode Sensor | Video resolution and HDR format |

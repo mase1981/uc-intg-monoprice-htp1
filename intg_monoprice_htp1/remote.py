@@ -35,7 +35,6 @@ SIMPLE_COMMANDS = [
     "Dialog Down",
     "Dirac Toggle",
     "Loudness Toggle",
-    "Dialnorm Toggle",
     "User Input 1",
     "User Input 2",
     "User Input 3",
@@ -320,11 +319,6 @@ class HTP1Remote(RemoteEntity):
 
             if cmd_id == Commands.SEND_CMD:
                 command = params.get("command", "") if params else ""
-
-                if command == "Dialnorm Toggle":
-                    dialnorm = self._device._state.get("dialnorm", False) if self._device._state else False
-                    success = await self._device.dialnorm_toggle(not dialnorm)
-                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
                 http_cmd = HTTP_COMMANDS.get(command)
                 if http_cmd:
