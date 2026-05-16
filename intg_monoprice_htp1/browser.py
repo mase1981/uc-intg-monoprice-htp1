@@ -16,12 +16,12 @@ from typing import TYPE_CHECKING
 import aiohttp
 
 from ucapi import StatusCodes
-from ucapi.api_definitions import (
+from ucapi.api_definitions import Pagination
+from ucapi.media_player import (
     BrowseMediaItem,
     BrowseOptions,
     BrowseResults,
     MediaClass,
-    Pagination,
     SearchOptions,
     SearchResults,
 )

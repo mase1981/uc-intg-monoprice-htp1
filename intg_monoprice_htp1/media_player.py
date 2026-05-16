@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ucapi import StatusCodes
-from ucapi.api_definitions import BrowseOptions, BrowseResults, SearchOptions, SearchResults
+from ucapi.media_player import BrowseOptions, BrowseResults, SearchOptions, SearchResults
 from ucapi.media_player import (
     Attributes,
     Commands,
