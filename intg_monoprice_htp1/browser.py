@@ -260,7 +260,7 @@ def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
             media_id="beq_loading",
             can_play=False,
             can_browse=False,
-            subtitle="Catalogue is downloading. Go back and retry in a moment.",
+            subtitle="Catalogue is downloading. Press back and browse again in ~2 min.",
         ),
     ]
     return BrowseResults(
@@ -276,18 +276,12 @@ def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
     )
 
 
-async def _wait_for_cache(timeout: float = 15.0) -> bool:
+async def _wait_for_cache() -> bool:
     if _beq_cache is not None:
         return True
     if not _beq_fetching.locked():
         asyncio.create_task(prefetch_catalogue())
-    try:
-        deadline = time.time() + timeout
-        while _beq_cache is None and time.time() < deadline:
-            await asyncio.sleep(0.5)
-        return _beq_cache is not None
-    except Exception:
-        return False
+    return False
 
 
 async def _browse_categories() -> BrowseResults:
