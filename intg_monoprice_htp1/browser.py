@@ -148,7 +148,6 @@ async def clear_cache() -> bool:
     _beq_cache = None
     _beq_cache_timestamp = None
     _beq_lookup = {}
-    asyncio.create_task(prefetch_catalogue())
     return True
 
 
@@ -228,13 +227,13 @@ def _browse_root(device: HTP1Device) -> BrowseResults:
 
     items.append(
             BrowseMediaItem(
-                title=f"Reload BEQ Info",
+                title="Clear BEQ Cache",
                 media_class=MediaClass.TRACK,
                 media_type="beq_reload",
                 media_id="beq:reload",
                 can_play=True,
                 can_browse=False,
-                subtitle="Reload BEQ information",
+                subtitle="Clear cached catalogue. Browse again to reload.",
             ),
         )
     return BrowseResults(
