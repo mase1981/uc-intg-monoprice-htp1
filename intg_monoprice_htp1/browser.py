@@ -23,6 +23,7 @@ from ucapi.media_player import (
     BrowseOptions,
     BrowseResults,
     MediaClass,
+    SearchMediaItem,
     SearchOptions,
     SearchResults,
 )
@@ -171,17 +172,15 @@ async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | 
 
 
 async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | StatusCodes:
-    if _beq_cache is None:
-        if not await _wait_for_cache():
-            return _loading_response()
-        
+    
     query = options.query.lower().strip()
     if not query:
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
-
+    
     if _beq_cache is None:
-        return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
-
+        if not await _wait_for_cache():
+            return _loading_searchresponse()
+        
     paging = options.paging
     page = paging.page
     limit = int((paging.limit if paging and paging.limit else None) or ITEMS_PER_PAGE)
@@ -278,6 +277,22 @@ def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
         pagination=Pagination(page=1, limit=1, count=1),
     )
 
+
+def _loading_searchresponse(title: str = "BEQ Catalogue") -> SearchResults | StatusCodes:
+    return SearchResults(
+        media=[
+            SearchMediaItem(
+                title="Loading BEQ catalogue...",
+                media_class=MediaClass.DIRECTORY,
+                media_type="beq_loading",
+                media_id="beq_loading",
+                can_play=False,
+                can_browse=False,
+                subtitle="Catalogue is downloading. Press back and browse again in ~2 min.",
+            )
+        ],
+        pagination=Pagination(page=1, limit=1, count=1),
+    )
 
 async def _wait_for_cache() -> bool:
     if _beq_cache is not None:
