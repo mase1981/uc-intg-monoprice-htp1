@@ -171,6 +171,10 @@ async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | 
 
 
 async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | StatusCodes:
+    if _beq_cache is None:
+        if not await _wait_for_cache():
+            return _loading_response()
+        
     query = options.query.lower().strip()
     if not query:
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
