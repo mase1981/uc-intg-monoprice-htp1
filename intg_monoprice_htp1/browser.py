@@ -42,8 +42,25 @@ _beq_lookup: dict[str, dict] = {}
 _beq_fetching: asyncio.Lock = asyncio.Lock()
 
 
+_beq_refresh_task: asyncio.Task | None = None
+
+
 async def prefetch_catalogue() -> None:
     await _fetch_beq_catalogue()
+
+
+async def start_refresh_loop() -> None:
+    global _beq_refresh_task
+    if _beq_refresh_task and not _beq_refresh_task.done():
+        return
+    _beq_refresh_task = asyncio.create_task(_refresh_loop())
+
+
+async def _refresh_loop() -> None:
+    while True:
+        await asyncio.sleep(BEQ_CACHE_LIFE)
+        _LOG.info("Scheduled BEQ catalogue refresh")
+        await _fetch_beq_catalogue()
 
 
 async def _fetch_beq_catalogue() -> list[dict]:
@@ -124,9 +141,14 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
     )
 
 async def clear_cache() -> bool:
-    global _beq_cache, _beq_lookup
+    global _beq_cache, _beq_cache_timestamp, _beq_lookup
+    if _beq_fetching.locked():
+        _LOG.debug("BEQ fetch in progress, skipping cache clear")
+        return True
     _beq_cache = None
+    _beq_cache_timestamp = None
     _beq_lookup = {}
+    asyncio.create_task(prefetch_catalogue())
     return True
 
 
@@ -233,12 +255,12 @@ def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
     items = [
         BrowseMediaItem(
             title="Loading BEQ catalogue...",
-            media_class=MediaClass.TRACK,
-            media_type="beq_reload",
-            media_id="beq:reload",
-            can_play=True,
+            media_class=MediaClass.DIRECTORY,
+            media_type="beq_loading",
+            media_id="beq_loading",
+            can_play=False,
             can_browse=False,
-            subtitle="Catalogue is downloading. Tap to retry.",
+            subtitle="Catalogue is downloading. Go back and retry in a moment.",
         ),
     ]
     return BrowseResults(
@@ -254,11 +276,24 @@ def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
     )
 
 
+async def _wait_for_cache(timeout: float = 15.0) -> bool:
+    if _beq_cache is not None:
+        return True
+    if not _beq_fetching.locked():
+        asyncio.create_task(prefetch_catalogue())
+    try:
+        deadline = time.time() + timeout
+        while _beq_cache is None and time.time() < deadline:
+            await asyncio.sleep(0.5)
+        return _beq_cache is not None
+    except Exception:
+        return False
+
+
 async def _browse_categories() -> BrowseResults:
     if _beq_cache is None:
-        if not _beq_fetching.locked():
-            asyncio.create_task(prefetch_catalogue())
-        return _loading_response()
+        if not await _wait_for_cache():
+            return _loading_response()
 
     catalogue = _beq_cache
 
@@ -298,9 +333,8 @@ async def _browse_categories() -> BrowseResults:
 
 async def _browse_category(content_type: str, page: int = 1) -> BrowseResults:
     if _beq_cache is None:
-        if not _beq_fetching.locked():
-            asyncio.create_task(prefetch_catalogue())
-        return _loading_response(content_type.title())
+        if not await _wait_for_cache():
+            return _loading_response(content_type.title())
 
     entries = [e for e in _beq_cache if e.get("content_type", "") == content_type]
     entries.sort(key=lambda e: e.get("title", ""))

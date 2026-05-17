@@ -290,8 +290,9 @@ class HTP1Device(WebSocketDevice):
 
     @staticmethod
     async def _prefetch_beq_catalogue() -> None:
-        from intg_monoprice_htp1.browser import prefetch_catalogue
+        from intg_monoprice_htp1.browser import prefetch_catalogue, start_refresh_loop
         await prefetch_catalogue()
+        await start_refresh_loop()
 
     async def send_message(self, message: str) -> bool:
         try:
