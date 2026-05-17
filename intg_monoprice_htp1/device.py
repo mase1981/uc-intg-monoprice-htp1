@@ -66,6 +66,8 @@ class HTP1Device(WebSocketDevice):
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
+        asyncio.create_task(self._prefetch_beq_catalogue())
+
     async def _on_disconnected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket disconnected", self.log_id)
         self._state = None
@@ -285,6 +287,11 @@ class HTP1Device(WebSocketDevice):
             "connection": "Connected" if self.is_connected else "Disconnected",
             "beq_active": self.beq_active or "None",
         }
+
+    @staticmethod
+    async def _prefetch_beq_catalogue() -> None:
+        from intg_monoprice_htp1.browser import prefetch_catalogue
+        await prefetch_catalogue()
 
     async def send_message(self, message: str) -> bool:
         try:

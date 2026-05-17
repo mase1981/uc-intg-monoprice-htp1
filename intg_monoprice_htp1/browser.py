@@ -7,6 +7,7 @@ Monoprice HTP-1 media browser for BEQ catalogue.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -38,35 +39,48 @@ BEQ_CACHE_LIFE = 86400  # seconds
 _beq_cache: list[dict] | None = None
 _beq_cache_timestamp: int | None = None
 _beq_lookup: dict[str, dict] = {}
+_beq_fetching: asyncio.Lock = asyncio.Lock()
+
+
+async def prefetch_catalogue() -> None:
+    await _fetch_beq_catalogue()
 
 
 async def _fetch_beq_catalogue() -> list[dict]:
     global _beq_cache
-    global _beq_cache_timestamp 
+    global _beq_cache_timestamp
     if _beq_cache is not None:
-     
-        if int(time.time()) -  _beq_cache_timestamp < BEQ_CACHE_LIFE:
+        if int(time.time()) - _beq_cache_timestamp < BEQ_CACHE_LIFE:
             return _beq_cache
- 
-    _LOG.info("Fetching BEQ catalogue from %s", BEQ_DB_URL)
-    try:
-        connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status != 200:
-                    _LOG.error("BEQ catalogue fetch URL: %s", BEQ_DB_URL)
-                    _LOG.error("BEQ catalogue fetch failed: %d", resp.status)
-                    return []
-                data = await resp.json(content_type=None)
-                if isinstance(data, list):
-                    data.sort(key=lambda e: e.get("title", ""))
-                    _beq_cache = data
-                    _beq_cache_timestamp = int(time.time())
-                    _LOG.info("BEQ catalogue loaded: %d entries", len(data))
-                    return data
-    except Exception as err:
-        _LOG.error("BEQ catalogue fetch error: %s", err)
-    return []
+
+    if _beq_fetching.locked():
+        _LOG.debug("BEQ catalogue fetch already in progress, waiting...")
+        async with _beq_fetching:
+            return _beq_cache if _beq_cache is not None else []
+
+    async with _beq_fetching:
+        if _beq_cache is not None:
+            if int(time.time()) - _beq_cache_timestamp < BEQ_CACHE_LIFE:
+                return _beq_cache
+
+        _LOG.info("Fetching BEQ catalogue from %s", BEQ_DB_URL)
+        try:
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                    if resp.status != 200:
+                        _LOG.error("BEQ catalogue fetch failed: %d", resp.status)
+                        return []
+                    data = await resp.json(content_type=None)
+                    if isinstance(data, list):
+                        data.sort(key=lambda e: e.get("title", ""))
+                        _beq_cache = data
+                        _beq_cache_timestamp = int(time.time())
+                        _LOG.info("BEQ catalogue loaded: %d entries", len(data))
+                        return data
+        except Exception as err:
+            _LOG.error("BEQ catalogue fetch error: %s", err)
+        return []
 
 
 def _build_beq_media_id(entry: dict) -> str:
@@ -140,10 +154,13 @@ async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | 
     if not query:
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
 
+    if _beq_cache is None:
+        return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
+
     paging = options.paging
     page = paging.page
     limit = int((paging.limit if paging and paging.limit else None) or ITEMS_PER_PAGE)
-    catalogue = await _fetch_beq_catalogue()
+    catalogue = _beq_cache
     start_index = (page - 1) * ITEMS_PER_PAGE
     end_index = start_index + ITEMS_PER_PAGE
 
@@ -212,8 +229,38 @@ def _browse_root(device: HTP1Device) -> BrowseResults:
     )
 
 
+def _loading_response(title: str = "BEQ Catalogue") -> BrowseResults:
+    items = [
+        BrowseMediaItem(
+            title="Loading BEQ catalogue...",
+            media_class=MediaClass.TRACK,
+            media_type="beq_reload",
+            media_id="beq:reload",
+            can_play=True,
+            can_browse=False,
+            subtitle="Catalogue is downloading. Tap to retry.",
+        ),
+    ]
+    return BrowseResults(
+        media=BrowseMediaItem(
+            title=title,
+            media_class=MediaClass.DIRECTORY,
+            media_type="beq_categories",
+            media_id="beq_categories",
+            can_browse=True,
+            items=items,
+        ),
+        pagination=Pagination(page=1, limit=1, count=1),
+    )
+
+
 async def _browse_categories() -> BrowseResults:
-    catalogue = await _fetch_beq_catalogue()
+    if _beq_cache is None:
+        if not _beq_fetching.locked():
+            asyncio.create_task(prefetch_catalogue())
+        return _loading_response()
+
+    catalogue = _beq_cache
 
     content_types: dict[str, int] = {}
     for entry in catalogue:
@@ -250,9 +297,12 @@ async def _browse_categories() -> BrowseResults:
 
 
 async def _browse_category(content_type: str, page: int = 1) -> BrowseResults:
-    catalogue = await _fetch_beq_catalogue()
+    if _beq_cache is None:
+        if not _beq_fetching.locked():
+            asyncio.create_task(prefetch_catalogue())
+        return _loading_response(content_type.title())
 
-    entries = [e for e in catalogue if e.get("content_type", "") == content_type]
+    entries = [e for e in _beq_cache if e.get("content_type", "") == content_type]
     entries.sort(key=lambda e: e.get("title", ""))
 
     total = len(entries)
