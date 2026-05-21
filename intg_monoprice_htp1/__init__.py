@@ -39,8 +39,11 @@ async def main():
 
     _LOG.info("Starting Monoprice HTP-1 Integration v%s", __version__)
 
+    from intg_monoprice_htp1 import browser
+
     driver = HTP1Driver()
     config_path = get_config_path(driver.api.config_dir_path or "")
+    browser.init(config_path)
     config_manager = BaseConfigManager(
         config_path,
         add_handler=driver.on_device_added,

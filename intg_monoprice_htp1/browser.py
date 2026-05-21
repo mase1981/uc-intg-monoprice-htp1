@@ -1,6 +1,11 @@
 """
 Monoprice HTP-1 media browser for BEQ catalogue.
 
+Two-phase loading to minimize memory usage on the Remote:
+- Phase 1 (startup): Download catalogue, keep only browse metadata in memory (~20MB),
+  write filter data to disk (~5MB file).
+- Phase 2 (on BEQ select): Read filter data from disk on demand.
+
 :copyright: (c) 2026 by Meir Miyara.
 :license: MPL-2.0, see LICENSE for more details.
 """
@@ -8,10 +13,12 @@ Monoprice HTP-1 media browser for BEQ catalogue.
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import json
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -35,15 +42,31 @@ _LOG = logging.getLogger(__name__)
 
 BEQ_DB_URL = "https://beqcatalogue.readthedocs.io/en/latest/database.json"
 ITEMS_PER_PAGE = 50
+BEQ_CACHE_LIFE = 86400
+BEQ_FILTERS_FILE = "beq_filters.json"
+DOWNLOAD_CHUNK_SIZE = 16384
 
-BEQ_CACHE_LIFE = 86400  # seconds
+_data_dir: Path | None = None
 _beq_cache: list[dict] | None = None
 _beq_cache_timestamp: int | None = None
-_beq_lookup: dict[str, dict] = {}
+_beq_lookup: dict[str, str] = {}
 _beq_fetching: asyncio.Lock = asyncio.Lock()
-
-
 _beq_refresh_task: asyncio.Task | None = None
+
+
+def init(data_dir: str | Path) -> None:
+    global _data_dir
+    _data_dir = Path(data_dir)
+    _data_dir.mkdir(parents=True, exist_ok=True)
+    _LOG.info("BEQ browser data directory: %s", _data_dir)
+
+
+def _filters_path() -> Path:
+    return (_data_dir or Path(".")) / BEQ_FILTERS_FILE
+
+
+def _raw_catalogue_path() -> Path:
+    return (_data_dir or Path(".")) / "beq_catalogue_raw.json"
 
 
 async def prefetch_catalogue() -> None:
@@ -64,9 +87,20 @@ async def _refresh_loop() -> None:
         await _fetch_beq_catalogue()
 
 
+def _compute_entry_hash(title: str, underlying: str, filters: list[dict]) -> str:
+    compact = {
+        "title": title or "Unknown",
+        "underlying": underlying or "",
+        "filters": [{k: v for k, v in f.items() if k != "biquads"} for f in filters],
+    }
+    return hashlib.md5(
+        json.dumps(compact, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
 async def _fetch_beq_catalogue() -> list[dict]:
-    global _beq_cache
-    global _beq_cache_timestamp
+    global _beq_cache, _beq_cache_timestamp, _beq_lookup
+
     if _beq_cache is not None:
         if int(time.time()) - _beq_cache_timestamp < BEQ_CACHE_LIFE:
             return _beq_cache
@@ -81,43 +115,93 @@ async def _fetch_beq_catalogue() -> list[dict]:
             if int(time.time()) - _beq_cache_timestamp < BEQ_CACHE_LIFE:
                 return _beq_cache
 
-        _LOG.info("Fetching BEQ catalogue from %s", BEQ_DB_URL)
+        raw_file = _raw_catalogue_path()
         try:
+            _LOG.info("Downloading BEQ catalogue from %s", BEQ_DB_URL)
             connector = aiohttp.TCPConnector(ssl=False)
             async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                async with session.get(BEQ_DB_URL, timeout=aiohttp.ClientTimeout(total=300)) as resp:
                     if resp.status != 200:
                         _LOG.error("BEQ catalogue fetch failed: %d", resp.status)
                         return []
-                    data = await resp.json(content_type=None)
-                    if isinstance(data, list):
-                        data.sort(key=lambda e: e.get("title", ""))
-                        _beq_cache = data
-                        _beq_cache_timestamp = int(time.time())
-                        _LOG.info("BEQ catalogue loaded: %d entries", len(data))
-                        return data
+                    with open(raw_file, "wb") as f:
+                        async for chunk in resp.content.iter_chunked(DOWNLOAD_CHUNK_SIZE):
+                            f.write(chunk)
+
+            _LOG.info("BEQ catalogue downloaded, processing...")
+            slim_cache, lookup = _process_catalogue(raw_file)
+
+            _beq_cache = slim_cache
+            _beq_cache_timestamp = int(time.time())
+            _beq_lookup = lookup
+            _LOG.info("BEQ catalogue ready: %d entries (slim cache + filters on disk)", len(slim_cache))
+            return slim_cache
+
         except Exception as err:
             _LOG.error("BEQ catalogue fetch error: %s", err)
-        return []
+            return []
+        finally:
+            try:
+                raw_file.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
-def _build_beq_media_id(entry: dict) -> str:
-    global _beq_lookup
-    compact = {
-        "title": entry.get("title", "Unknown"),
-        "underlying": entry.get("underlying", ""),
-        "filters": entry.get("filters", []),
-    }
-    for f in compact["filters"]:
-        f.pop("biquads", None)
-    key = hashlib.md5(json.dumps(compact, separators=(",", ":"), sort_keys=True).encode()).hexdigest()[:16]
-    media_id = f"beq:{key}"
-    _beq_lookup[key] = compact
-    return media_id
+def _process_catalogue(raw_file: Path) -> tuple[list[dict], dict[str, str]]:
+    with open(raw_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
+    if not isinstance(data, list):
+        _LOG.error("BEQ catalogue is not a list")
+        return [], {}
 
-def get_beq_entry(key: str) -> dict | None:
-    return _beq_lookup.get(key)
+    slim_cache: list[dict] = []
+    lookup: dict[str, str] = {}
+    filters_file = _filters_path()
+    temp_file = filters_file.with_suffix(".tmp")
+
+    with open(temp_file, "w", encoding="utf-8") as ff:
+        ff.write("{")
+        for i, entry in enumerate(data):
+            title = entry.get("title", "")
+            underlying = entry.get("underlying", "")
+            raw_filters = entry.get("filters", [])
+
+            key = _compute_entry_hash(title, underlying, raw_filters)
+
+            slim_cache.append({
+                "title": title,
+                "year": entry.get("year", ""),
+                "content_type": entry.get("content_type", ""),
+                "audioTypes": entry.get("audioTypes", []),
+                "author": entry.get("author", ""),
+                "underlying": underlying,
+                "key": key,
+            })
+
+            lookup[key] = underlying or title or "Unknown"
+
+            stripped = [
+                {"type": fl.get("type", "PeakingEQ"), "freq": fl.get("freq", 100),
+                 "gain": fl.get("gain", 0), "q": fl.get("q", 1)}
+                for fl in raw_filters
+            ]
+            if i > 0:
+                ff.write(",")
+            ff.write(f'"{key}":')
+            ff.write(json.dumps(stripped, separators=(",", ":")))
+
+            data[i] = None
+
+        ff.write("}")
+
+    temp_file.rename(filters_file)
+
+    del data
+    gc.collect()
+
+    slim_cache.sort(key=lambda e: e.get("title", ""))
+    return slim_cache, lookup
 
 
 def _entry_to_item(entry: dict) -> BrowseMediaItem:
@@ -130,16 +214,46 @@ def _entry_to_item(entry: dict) -> BrowseMediaItem:
         subtitle += f" | {audio_types}"
 
     display_title = f"{title} {author}".strip()[:255]
+    key = entry["key"]
+
+    _beq_lookup[key] = entry.get("underlying", title) or title or "Unknown"
 
     return BrowseMediaItem(
         title=display_title,
         media_class=MediaClass.TRACK,
         media_type="beq_entry",
-        media_id=_build_beq_media_id(entry),
+        media_id=f"beq:{key}",
         can_play=True,
         can_browse=False,
         subtitle=subtitle[:255] if subtitle else None,
     )
+
+
+def _load_filters_for_key(key: str) -> list[dict] | None:
+    fp = _filters_path()
+    if not fp.exists():
+        return None
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            all_filters = json.load(f)
+        result = all_filters.get(key)
+        del all_filters
+        return result
+    except Exception as err:
+        _LOG.error("Failed to load BEQ filters from disk: %s", err)
+        return None
+
+
+async def get_beq_entry(key: str) -> dict | None:
+    title = _beq_lookup.get(key)
+    if not title:
+        return None
+    loop = asyncio.get_event_loop()
+    filters = await loop.run_in_executor(None, _load_filters_for_key, key)
+    if not filters:
+        return None
+    return {"underlying": title, "filters": filters}
+
 
 async def clear_cache() -> bool:
     global _beq_cache, _beq_cache_timestamp, _beq_lookup
@@ -149,6 +263,12 @@ async def clear_cache() -> bool:
     _beq_cache = None
     _beq_cache_timestamp = None
     _beq_lookup = {}
+    try:
+        fp = _filters_path()
+        if fp.exists():
+            fp.unlink()
+    except OSError:
+        pass
     return True
 
 
@@ -172,15 +292,15 @@ async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | 
 
 
 async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | StatusCodes:
-    
+
     query = options.query.lower().strip()
     if not query:
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
-    
+
     if _beq_cache is None:
         if not await _wait_for_cache():
             return _loading_searchresponse()
-        
+
     paging = options.paging
     page = paging.page
     limit = int((paging.limit if paging and paging.limit else None) or ITEMS_PER_PAGE)

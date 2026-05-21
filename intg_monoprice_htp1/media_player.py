@@ -169,7 +169,7 @@ class HTP1MediaPlayer(MediaPlayerEntity):
         if media_id.startswith("beq:"):
             from intg_monoprice_htp1.browser import get_beq_entry
             key = media_id[4:]
-            entry = get_beq_entry(key)
+            entry = await get_beq_entry(key)
             if not entry:
                 _LOG.error("[%s] BEQ entry not found for key: %s", self.id, key)
                 return StatusCodes.BAD_REQUEST
