@@ -332,6 +332,7 @@ class HTP1Remote(RemoteEntity):
                 http_cmd = HTTP_COMMANDS.get(command)
                 if http_cmd:
                     success = await self._device.send_http_command(http_cmd)
+                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
                 else:
                     if command == "Seat Shaker Mute Toggle":
                         success = await self._device.ss_mute_toggle(not self._device.muted)
