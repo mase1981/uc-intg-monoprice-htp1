@@ -107,6 +107,15 @@ SIMPLE_COMMANDS = [
     "Dirac Live filter 6",
     "Loudness level +1",
     "Loudness level -1",
+    "Seat Shaker Mute Toggle",
+    "Seat Shaker Preset 1",
+    "Seat Shaker Preset 2",
+    "Seat Shaker Preset 3",
+    "Seat Shaker Preset 4",
+    "Seat Shaker Preset 5",
+    "Seat Shaker Preset 6",
+    "Seat Shaker Trim +1",
+    "Seat Shaker Trim -1",
 ]
 
 HTTP_COMMANDS = {
@@ -316,6 +325,29 @@ class HTP1Remote(RemoteEntity):
             if cmd_id == "MUTE":
                 success = await self._device.mute_toggle(not self._device.muted)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+            if cmd_id == "Seat Shaker Mute Toggle":
+                success = await self._device.ss_mute_toggle(not self._device.muted)
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+            if cmd_id == "Seat Shaker Trim +1":
+                new_trim = self._device.ss_trim + 1
+                success = await self._device.set_ss_trim(new_trim)
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+            if cmd_id == "Seat Shaker Trim -1":
+                new_trim = self._device.ss_trim - 1
+                success = await self._device.set_ss_trim(new_trim)
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+            if cmd_id.startswith("Seat Shaker Preset "):
+                preset_num_str = cmd_id.replace("Seat Shaker Preset ", "")
+                if preset_num_str.isdigit():
+                    preset_index = int(preset_num_str) - 1
+                    success = await self._device.select_ss_preset(preset_index)
+                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+                else:
+                    return StatusCodes.BAD_REQUEST
 
             if cmd_id == Commands.SEND_CMD:
                 command = params.get("command", "") if params else ""

@@ -50,7 +50,11 @@ class HTP1Device(WebSocketDevice):
         self.vpl: int = -80
         self.vph: int = 12
         self.zp: int = 0
+        self.ss_mute = "off"
+        self.ss_preset = 0
+        self.ss_trim = 0
         self.beq_active: str = ""
+        self.send_http_command
 
     async def _on_connected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket connected", self.log_id)
@@ -199,6 +203,12 @@ class HTP1Device(WebSocketDevice):
             volume -= self.zp
         self.volume_db = volume
 
+        if ("shaker" in self._state):
+            shaker = self._state.get("shaker")
+            self.ss_mute = shaker.get("mute", "off")
+            self.ss_preset = shaker.get("activePreset", 0)+1
+            self.ss_trim = shaker.get("trim", 0)
+
         input_id = self._state.get("input")
         source_list = []
         source = ""
@@ -276,6 +286,9 @@ class HTP1Device(WebSocketDevice):
             "input": source,
             "volume": f"{self.volume_db}",
             "mute": "On" if self.muted else "Off",
+            "ss_trim": f"{self.ss_trim}",
+            "ss_mute": self.ss_mute.capitalize(),
+            "ss_preset": self.ss_preset,
             "loudness": str(loudness_state).capitalize() if isinstance(loudness_state, str) else ("On" if loudness_state else "Off"),
             "night_mode": str(night_mode_state).capitalize() if isinstance(night_mode_state, str) else ("On" if night_mode_state else "Off"),
             "peq": "On" if peq_sw else "Off",
@@ -375,6 +388,17 @@ class HTP1Device(WebSocketDevice):
             {"op": "replace", "path": "/muted", "value": muted}
         ])
 
+    async def ss_mute_toggle(self, muted: bool) -> bool:
+        _LOG.info("[%s] Setting seat shaker mute to %s", self.log_id, muted)
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/mute", "value": muted}
+        ])
+    
+    async def ss_trim_adjust(self, trim: int) -> bool:
+        _LOG.info("[%s] Setting seat shaker trim to %d", self.log_id, trim)
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/trim", "value": trim}
+        ])
 
     async def select_source(self, source: str) -> bool:
         _LOG.info("[%s] Selecting source: %s", self.log_id, source)
@@ -393,6 +417,14 @@ class HTP1Device(WebSocketDevice):
         native = sound_mode_native_values.get(sound_mode, sound_mode)
         return await self._send_transaction([
             {"op": "replace", "path": "/upmix/select", "value": native}
+        ])
+    
+    async def select_ss_preset(self, preset_index: int) -> bool:
+        _LOG.info("[%s] Selecting seat shaker preset: %d", self.log_id, preset_index)
+        if not self._state or "shaker" not in self._state:
+            return False
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/activePreset", "value": preset_index}
         ])
 
     async def select_calibration(self, slot_name: str) -> bool:

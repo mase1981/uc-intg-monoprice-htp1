@@ -107,6 +107,14 @@ def create_selects(config: HTP1Config, device: HTP1Device) -> list[HTP1Select]:
             lambda: device.sound_mode_display,
             lambda opt: device.select_sound_mode(opt),
         ),
+        HTP1Select(
+            f"select.{device_id}.ss_preset",
+            f"{name} Seat Shaker Preset",
+            device,
+            lambda opts=[1, 2, 3, 4, 5, 6]: opts,
+            lambda: device.ss_preset,
+            lambda opt: device.select_ss_preset(int(opt)-1),
+        ),
     ]
 
     _LOG.info("Created %d select entities for %s", len(entities), name)
