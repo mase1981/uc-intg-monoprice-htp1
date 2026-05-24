@@ -326,29 +326,6 @@ class HTP1Remote(RemoteEntity):
                 success = await self._device.mute_toggle(not self._device.muted)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
             
-            if cmd_id == "Seat Shaker Mute Toggle":
-                success = await self._device.ss_mute_toggle(not self._device.muted)
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-            
-            if cmd_id == "Seat Shaker Trim +1":
-                new_trim = self._device.ss_trim + 1
-                success = await self._device.set_ss_trim(new_trim)
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-            if cmd_id == "Seat Shaker Trim -1":
-                new_trim = self._device.ss_trim - 1
-                success = await self._device.set_ss_trim(new_trim)
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-            
-            if cmd_id.startswith("Seat Shaker Preset "):
-                preset_num_str = cmd_id.replace("Seat Shaker Preset ", "")
-                if preset_num_str.isdigit():
-                    preset_index = int(preset_num_str) - 1
-                    success = await self._device.select_ss_preset(preset_index)
-                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-                else:
-                    return StatusCodes.BAD_REQUEST
-
             if cmd_id == Commands.SEND_CMD:
                 command = params.get("command", "") if params else ""
 
@@ -356,8 +333,31 @@ class HTP1Remote(RemoteEntity):
                 if http_cmd:
                     success = await self._device.send_http_command(http_cmd)
                 else:
+                    if command == "Seat Shaker Mute Toggle":
+                        success = await self._device.ss_mute_toggle(not self._device.muted)
+                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+                    if command == "Seat Shaker Trim +1":
+                        new_trim = self._device.ss_trim + 1
+                        success = await self._device.set_ss_trim(new_trim)
+                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+                    if command == "Seat Shaker Trim -1":
+                        new_trim = self._device.ss_trim - 1
+                        success = await self._device.set_ss_trim(new_trim)
+                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+                    if command.startswith("Seat Shaker Preset "):
+                        preset_num_str = command.replace("Seat Shaker Preset ", "")
+                        if preset_num_str.isdigit():
+                            preset_index = int(preset_num_str) - 1
+                            success = await self._device.select_ss_preset(preset_index)
+                            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+                        else:
+                            return StatusCodes.BAD_REQUEST
+
                     success = await self._device.send_command(command)
-                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             return StatusCodes.NOT_IMPLEMENTED
 
