@@ -6,6 +6,7 @@ Monoprice HTP-1 device implementation for Unfolded Circle integration.
 """
 
 import asyncio
+import cmd
 import json
 import logging
 from typing import Any
@@ -390,11 +391,16 @@ class HTP1Device(WebSocketDevice):
 
     async def ss_mute_toggle(self, muted: bool) -> bool:
         _LOG.info("[%s] Setting seat shaker mute to %s", self.log_id, muted)
+        if self.ss_mute == "off":
+            status = "on"
+        else:
+            status = "off"
+
         return await self._send_transaction([
-            {"op": "replace", "path": "/shaker/mute", "value": muted}
+            {"op": "replace", "path": "/shaker/mute", "value": status}
         ])
     
-    async def ss_trim_adjust(self, trim: int) -> bool:
+    async def set_ss_trim(self, trim: int) -> bool:
         _LOG.info("[%s] Setting seat shaker trim to %d", self.log_id, trim)
         return await self._send_transaction([
             {"op": "replace", "path": "/shaker/trim", "value": trim}
