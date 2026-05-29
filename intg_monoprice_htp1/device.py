@@ -9,6 +9,7 @@ import asyncio
 import cmd
 import json
 import logging
+import sys
 from typing import Any
 
 import aiohttp
@@ -71,7 +72,11 @@ class HTP1Device(WebSocketDevice):
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
-        asyncio.create_task(self._prefetch_beq_catalogue())
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            _LOG.info("[%s] Running On Remote", self.log_id)
+        else:
+            _LOG.info("[%s] Not Running on Remote Pre-fetch BEQ Catalogue", self.log_id)
+            asyncio.create_task(self._prefetch_beq_catalogue())
 
     async def _on_disconnected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket disconnected", self.log_id)
@@ -314,7 +319,7 @@ class HTP1Device(WebSocketDevice):
     async def _prefetch_beq_catalogue() -> None:
         from intg_monoprice_htp1.browser import prefetch_catalogue, start_refresh_loop
         await prefetch_catalogue()
-        await start_refresh_loop()
+        # await start_refresh_loop()
 
     async def send_message(self, message: str) -> bool:
         try:
