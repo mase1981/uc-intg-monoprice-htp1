@@ -208,7 +208,15 @@ class HTP1Device(WebSocketDevice):
             shaker = self._state.get("shaker")
             self.ss_mute = shaker.get("mute", "off")
             self.ss_preset = shaker.get("activePreset", 0)+1
-            self.ss_trim = shaker.get("trim", 0)
+            presets = shaker.get("presets")
+            if presets:
+                current_preset = presets.get(str(shaker.get("activePreset")))
+            else:
+                current_preset = None
+            if current_preset:
+                self.ss_trim = current_preset.get("trim", 0)
+            else:
+                self.ss_trim = 0
 
         input_id = self._state.get("input")
         source_list = []
