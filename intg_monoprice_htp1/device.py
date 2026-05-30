@@ -6,10 +6,9 @@ Monoprice HTP-1 device implementation for Unfolded Circle integration.
 """
 
 import asyncio
-import cmd
 import json
 import logging
-import sys
+import os
 from typing import Any
 
 import aiohttp
@@ -25,6 +24,7 @@ _LOG = logging.getLogger(__name__)
 FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
+
 
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
@@ -72,7 +72,7 @@ class HTP1Device(WebSocketDevice):
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
-        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        if os.getenv("INVOCATION_ID"):
             _LOG.info("[%s] Running On Remote", self.log_id)
         else:
             _LOG.info("[%s] Not Running on Remote Pre-fetch BEQ Catalogue", self.log_id)
