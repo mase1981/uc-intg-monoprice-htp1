@@ -44,7 +44,7 @@ Your support helps maintain this integration. Thank you! ❤️
 - **Mute Toggle** - Quick mute/unmute
 - **Unmute** - Explicit unmute control
 - **Seat Shaker Trim** - Increase/Decrase Seat Shaker Trim Level
-- **Seat Shaker Toggle** - Toggle seat Shaker mute
+- **Seat Shaker Mute Toggle** - Toggle seat Shaker mute
 - **Real-time Updates** - Instant volume feedback via WebSocket
 
 #### **Source Selection including select entity**
@@ -70,8 +70,8 @@ Control all available input sources:
 - **Load** - Load selected BEQ Filter into the HTP-1
 
 - **Note** - Recent changes by UnfoldedCircle have made loading the BEQ Catalogue sub optimal on the remote
-- If you plan on using this feature, it is recommended to install the integration on Docker if available (See below)
-- We will continue to look at ways to make this really cool feature more robust when running on the remote.
+             If you plan on using this feature, it is recommended to install the integration on Docker if available (See below)
+             We will continue to look at ways to make this really cool feature more robust when running on the remote.
 
 #### **Calibration Control via select entity**
 - **Dynamically reads avaialble Calibrations slots** - Choose from available calibrations
