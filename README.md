@@ -43,6 +43,8 @@ Your support helps maintain this integration. Thank you! ❤️
 - **Volume Slider** - Visual volume control (0-100 scale)
 - **Mute Toggle** - Quick mute/unmute
 - **Unmute** - Explicit unmute control
+- **Seat Shaker Trim** - Increase/Decrase Seat Shaker Trim Level
+- **Seat Shaker Toggle** - Toggle seat Shaker mute
 - **Real-time Updates** - Instant volume feedback via WebSocket
 
 #### **Source Selection including select entity**
@@ -52,6 +54,7 @@ Control all available input sources:
 - **Digital Inputs** - Coaxial and optical
 - **Other Sources** - USB, network streaming, etc.
 - **Custom Names** - Uses your configured input names
+- **Seat Shaker Preset** - Select Seat Shaker Preset 1-6
 
 #### **Sound Mode Control including select entity**
 - **Upmix Selection** - Choose from available upmix modes
@@ -59,6 +62,16 @@ Control all available input sources:
 - **Dolby Surround** - Dolby upmixing
 - **Stereo/Native** - Direct audio modes
 - **Real-time Feedback** - Current mode displayed
+
+#### **Media Browsing support for BEQ filters**
+- **Browse** - Browse the BEQ Library by Movie/TV Show
+- **Searching** - Search the BEQ Library by Name
+- **Clear** - Clear current BEQ filter in the HTP-1
+- **Load** - Load selected BEQ Filter into the HTP-1
+
+- **Note** - Recent changes by UnfoldedCircle have made loading the BEQ Catalogue sub optimal on the remote
+- If you plan on using this feature, it is recommended to install the integration on Docker if available (See below)
+- We will continue to look at ways to make this really cool feature more robust when running on the remote.
 
 #### **Calibration Control via select entity**
 - **Dynamically reads avaialble Calibrations slots** - Choose from available calibrations
@@ -82,10 +95,13 @@ Real-time monitoring of receiver state:
 
 - **Input Sensor** - Currently selected input source
 - **Volume Sensor** - Current volume level in dB
+- **Seat Shaker Trim Level Sensor** - Current Seat Shaker Trim Levl in dB
 - **Loudness Sensor** -State of Loudness
-- **Mute Sensor** - Stae of Mute
+- **Mute Sensor** - State of Mute
+- **Seat Shaker Mute Sensor** - State of Seat Shaker Mute
+- **Seat Shaker Preset Sensor** - Current Seat Shaker Preset
 - **PEQ Status Sensor** - State of PEQ
-- **Night Mode Status Sensor - State of Night Mode (Off also defeats Dialnorm)  
+- **Night Mode Status Sensor** - State of Night Mode 
 - **Audio Format Sensor** - Detected audio codec and channels
 - **Output Audio Format Sensor** - Detected output audio codec and output channels
 - **Current Calibration Sensor** - Displays the Current Dirac Calibration Name, Dirac Bybass, or Dirac Off 
