@@ -56,7 +56,6 @@ class HTP1Device(WebSocketDevice):
         self.ss_preset = 0
         self.ss_trim = 0
         self.beq_active: str = ""
-        self.send_http_command
 
     async def _on_connected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket connected", self.log_id)

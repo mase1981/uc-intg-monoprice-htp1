@@ -18,7 +18,7 @@ jobs:
       driver_id: ${{ steps.get-version-and-id.outputs.DRIVER_ID }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 200
 
@@ -82,7 +82,7 @@ jobs:
           tar tzvf ${{ env.ARTIFACT_NAME }}.tar.gz
           ls -lah ${{ env.ARTIFACT_NAME }}.tar.gz
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         id: upload_artifact
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -99,13 +99,13 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -113,7 +113,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/uc-intg-monoprice-htp1
           tags: |
@@ -121,7 +121,9 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -138,7 +140,9 @@ jobs:
 
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
+        with:
+          pattern: uc-intg-*
 
       - name: Extract build archives from downloaded files
         run: |
