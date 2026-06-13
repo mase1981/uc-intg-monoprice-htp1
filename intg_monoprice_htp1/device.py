@@ -8,6 +8,7 @@ Monoprice HTP-1 device implementation for Unfolded Circle integration.
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 import aiohttp
@@ -23,6 +24,7 @@ _LOG = logging.getLogger(__name__)
 FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
+
 
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
@@ -50,7 +52,11 @@ class HTP1Device(WebSocketDevice):
         self.vpl: int = -80
         self.vph: int = 12
         self.zp: int = 0
+        self.ss_mute = "off"
+        self.ss_preset = 0
+        self.ss_trim = 0
         self.beq_active: str = ""
+        self.send_http_command
 
     async def _on_connected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket connected", self.log_id)
@@ -66,7 +72,11 @@ class HTP1Device(WebSocketDevice):
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
-        asyncio.create_task(self._prefetch_beq_catalogue())
+        if os.getenv("INVOCATION_ID"):
+            _LOG.info("[%s] Running On Remote", self.log_id)
+        else:
+            _LOG.info("[%s] Not Running on Remote Pre-fetch BEQ Catalogue", self.log_id)
+            asyncio.create_task(self._prefetch_beq_catalogue())
 
     async def _on_disconnected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket disconnected", self.log_id)
@@ -199,6 +209,20 @@ class HTP1Device(WebSocketDevice):
             volume -= self.zp
         self.volume_db = volume
 
+        if ("shaker" in self._state):
+            shaker = self._state.get("shaker")
+            self.ss_mute = shaker.get("mute", "off")
+            self.ss_preset = shaker.get("activePreset", 0)+1
+            presets = shaker.get("presets")
+            if presets:
+                current_preset = presets.get(str(shaker.get("activePreset")))
+            else:
+                current_preset = None
+            if current_preset:
+                self.ss_trim = current_preset.get("trim", 0)
+            else:
+                self.ss_trim = 0
+
         input_id = self._state.get("input")
         source_list = []
         source = ""
@@ -276,6 +300,9 @@ class HTP1Device(WebSocketDevice):
             "input": source,
             "volume": f"{self.volume_db}",
             "mute": "On" if self.muted else "Off",
+            "ss_trim": f"{self.ss_trim}",
+            "ss_mute": self.ss_mute.capitalize(),
+            "ss_preset": self.ss_preset,
             "loudness": str(loudness_state).capitalize() if isinstance(loudness_state, str) else ("On" if loudness_state else "Off"),
             "night_mode": str(night_mode_state).capitalize() if isinstance(night_mode_state, str) else ("On" if night_mode_state else "Off"),
             "peq": "On" if peq_sw else "Off",
@@ -292,7 +319,7 @@ class HTP1Device(WebSocketDevice):
     async def _prefetch_beq_catalogue() -> None:
         from intg_monoprice_htp1.browser import prefetch_catalogue, start_refresh_loop
         await prefetch_catalogue()
-        await start_refresh_loop()
+        # await start_refresh_loop()
 
     async def send_message(self, message: str) -> bool:
         try:
@@ -375,6 +402,22 @@ class HTP1Device(WebSocketDevice):
             {"op": "replace", "path": "/muted", "value": muted}
         ])
 
+    async def ss_mute_toggle(self, muted: bool) -> bool:
+        _LOG.info("[%s] Setting seat shaker mute to %s", self.log_id, muted)
+        if self.ss_mute == "off":
+            status = "on"
+        else:
+            status = "off"
+
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/mute", "value": status}
+        ])
+    
+    async def set_ss_trim(self, trim: int) -> bool:
+        _LOG.info("[%s] Setting seat shaker trim to %d", self.log_id, trim)
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/trim", "value": trim}
+        ])
 
     async def select_source(self, source: str) -> bool:
         _LOG.info("[%s] Selecting source: %s", self.log_id, source)
@@ -393,6 +436,14 @@ class HTP1Device(WebSocketDevice):
         native = sound_mode_native_values.get(sound_mode, sound_mode)
         return await self._send_transaction([
             {"op": "replace", "path": "/upmix/select", "value": native}
+        ])
+    
+    async def select_ss_preset(self, preset_index: int) -> bool:
+        _LOG.info("[%s] Selecting seat shaker preset: %d", self.log_id, preset_index)
+        if not self._state or "shaker" not in self._state:
+            return False
+        return await self._send_transaction([
+            {"op": "replace", "path": "/shaker/activePreset", "value": preset_index}
         ])
 
     async def select_calibration(self, slot_name: str) -> bool:
