@@ -25,33 +25,6 @@ FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
 
-
-def apply_json_patch(target: dict | list, op: str, path_str: str, value: Any = None) -> None:
-    """Apply a single JSON patch operation to a target dictionary/list."""
-    if not path_str.startswith("/"):
-        return
-        
-    path = path_str[1:].split("/")
-    final_key = path.pop()
-
-    current = target
-    for node in path:
-        if isinstance(current, list):
-            node = int(node)
-        current = current[node]
-
-    if op == "remove":
-        if isinstance(current, dict):
-            current.pop(final_key, None)
-        elif isinstance(current, list):
-            del current[int(final_key)]
-    elif op in ("add", "replace"):
-        if isinstance(current, list):
-            current[int(final_key)] = value
-        else:
-            current[final_key] = value
-
-
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
 
@@ -606,3 +579,30 @@ class HTP1Device(WebSocketDevice):
             self.beq_active = title
             _LOG.info("[%s] BEQ loaded: %s (%d filters)", self.log_id, title, len(filters))
         return success
+
+
+def apply_json_patch(target: dict | list, op: str, path_str: str, value: Any = None) -> None:
+    """Apply a single JSON patch operation to a target dictionary/list."""
+    if not path_str.startswith("/"):
+        return
+        
+    path = path_str[1:].split("/")
+    final_key = path.pop()
+
+    current = target
+    for node in path:
+        if isinstance(current, list):
+            node = int(node)
+        current = current[node]
+
+    if op == "remove":
+        if isinstance(current, dict):
+            current.pop(final_key, None)
+        elif isinstance(current, list):
+            del current[int(final_key)]
+    elif op in ("add", "replace"):
+        if isinstance(current, list):
+            current[int(final_key)] = value
+        else:
+            current[final_key] = value
+
