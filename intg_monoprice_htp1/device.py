@@ -25,7 +25,6 @@ FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
 
-
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
 
@@ -108,9 +107,7 @@ class HTP1Device(WebSocketDevice):
         return self._sensor_data.get(key, "")
 
     async def create_websocket(self) -> WebSocketClientProtocol:
-        _LOG.info(
-            "[%s] Creating WebSocket connection to %s", self.log_id, self.websocket_url
-        )
+        _LOG.info("[%s] Creating WebSocket connection to %s", self.log_id, self.websocket_url)
         logging.getLogger("websockets").setLevel(logging.INFO)
         self._ws = await websockets.connect(
             self.websocket_url,
@@ -130,6 +127,7 @@ class HTP1Device(WebSocketDevice):
             message = await self._ws.recv()
             return message if isinstance(message, str) else None
         except websockets.ConnectionClosed:
+            _LOG.debug("[%s] WebSocket connection closed by remote", self.log_id)
             return None
         except Exception as err:
             _LOG.error("[%s] Error receiving message: %s", self.log_id, err)
@@ -140,176 +138,165 @@ class HTP1Device(WebSocketDevice):
             _LOG.info("[%s] First message received, requesting initial state", self.log_id)
             await self.send_message("getmso")
 
+        if " " not in message:
+            return
+
+        cmd, payload = message.split(" ", 1)
+        
         try:
-            if " " not in message:
-                return
-
-            cmd, payload = message.split(" ", 1)
             data = json.loads(payload)
+        except json.JSONDecodeError as err:
+            _LOG.error("[%s] Failed to decode JSON payload: %s", self.log_id, err)
+            return
 
-            if cmd == "mso":
-                self._state = data
-                self._state_ready.set()
-                _LOG.debug("[%s] Received full state", self.log_id)
-                self._parse_state()
-                self.push_update()
+        if cmd == "mso":
+            self._state = data
+            self._state_ready.set()
+            _LOG.debug("[%s] Received full state", self.log_id)
+            self._parse_state()
+            self.push_update()
 
-            elif cmd == "msoupdate":
-                if not isinstance(data, list):
-                    data = [data]
+        elif cmd == "msoupdate":
+            if not isinstance(data, list):
+                data = [data]
 
-                for piece in data:
-                    op = piece.get("op")
-                    path = piece.get("path", "")[1:].split("/")
-                    target = self._state
-                    final = path.pop()
+            for piece in data:
+                op = piece.get("op")
+                path_str = piece.get("path", "")
+                value = piece.get("value")
+                
+                try:
+                    apply_json_patch(self._state, op, path_str, value)
+                except (KeyError, IndexError, TypeError) as err:
+                    _LOG.error("[%s] Failed to apply JSON patch %s: %s", self.log_id, piece, err)
 
-                    if op == "remove":
-                        for node in path:
-                            if isinstance(target, list):
-                                node = int(node)
-                            target = target[node]
-                        if isinstance(target, dict):
-                            target.pop(final, None)
-                        elif isinstance(target, list):
-                            del target[int(final)]
-                        continue
-
-                    if op not in ("add", "replace"):
-                        continue
-
-                    for node in path:
-                        if isinstance(target, list):
-                            node = int(node)
-                        target = target[node]
-
-                    value = piece.get("value")
-                    target[final] = value
-
-                self._parse_state()
-                self.push_update()
-
-        except Exception as err:
-            _LOG.error("[%s] Message processing error: %s", self.log_id, err)
+            self._parse_state()
+            self.push_update()
 
     def _parse_state(self) -> None:
+        """Orchestrate the parsing of the HTP-1 state dictionary."""
         if not self._state:
             return
 
+        self._parse_power_and_volume()
+        self._parse_seat_shakers()
+        self._parse_inputs()
+        self._parse_audio_and_dirac()
+        self._parse_video_stats()
+        self._update_sensor_data()
+
+    def _parse_power_and_volume(self) -> None:
         self.power = self._state.get("powerIsOn", False)
         self.muted = self._state.get("muted", False)
 
         volume = self._state.get("volume", 0)
-        if "cal" in self._state:
-            cal = self._state["cal"]
-            self.zp = cal.get("zeroPoint", 0)
-            self.vpl = cal.get("vpl", -80)
-            self.vph = cal.get("vph", 12)
-            volume -= self.zp
-        self.volume_db = volume
+        cal = self._state.get("cal", {})
+        
+        self.zp = cal.get("zeroPoint", 0)
+        self.vpl = cal.get("vpl", -80)
+        self.vph = cal.get("vph", 12)
+        
+        self.volume_db = volume - self.zp
 
-        if ("shaker" in self._state):
-            shaker = self._state.get("shaker")
-            self.ss_mute = shaker.get("mute", "off")
-            self.ss_preset = shaker.get("activePreset", 0)+1
-            presets = shaker.get("presets")
-            if presets:
-                current_preset = presets.get(str(shaker.get("activePreset")))
-            else:
-                current_preset = None
-            if current_preset:
-                self.ss_trim = current_preset.get("trim", 0)
-            else:
-                self.ss_trim = 0
+    def _parse_seat_shakers(self) -> None:
+        shaker = self._state.get("shaker", {})
+        if not shaker:
+            self.ss_mute = "off"
+            self.ss_preset = 0
+            self.ss_trim = 0
+            return
 
-        input_id = self._state.get("input")
-        source_list = []
-        source = ""
-        if "inputs" in self._state:
-            for inp_id, inp_info in self._state["inputs"].items():
-                if inp_info.get("visible"):
-                    source_list.append(inp_info.get("label", inp_id))
-                if inp_id == input_id:
-                    source = inp_info.get("label", inp_id)
-        self.current_source = source
-        self.source_list = source_list
+        self.ss_mute = shaker.get("mute", "off")
+        self.ss_preset = shaker.get("activePreset", 0) + 1
+        
+        presets = shaker.get("presets", {})
+        active_preset_str = str(shaker.get("activePreset", ""))
+        current_preset = presets.get(active_preset_str, {})
+        
+        self.ss_trim = current_preset.get("trim", 0)
 
+    def _parse_inputs(self) -> None:
+        input_id = self._state.get("input", "")
+        self.source_list = []
+        self.current_source = ""
+        
+        inputs = self._state.get("inputs", {})
+        for inp_id, inp_info in inputs.items():
+            if not isinstance(inp_info, dict):
+                continue
+                
+            label = inp_info.get("label", inp_id)
+            if inp_info.get("visible", False):
+                self.source_list.append(label)
+                
+            if inp_id == input_id:
+                self.current_source = label
+
+    def _parse_audio_and_dirac(self) -> None:
+        audio_info = self._state.get("status", {})
+        codec = audio_info.get("DECSourceProgram", "")
+        channels = audio_info.get("DECProgramFormat", "")
+        self.audio_format = f"{channels} {codec}".strip() if codec else (channels or "none")
+
+        output_codec = audio_info.get("SurroundMode", "")
+        output_channels = audio_info.get("ENCListeningFormat", "")
+        self.output_audio_format = f"{output_channels} {output_codec}".strip() if output_codec else output_channels
+
+        upmix = self._state.get("upmix", {})
+        self.surround_mode = upmix.get("select", "")
+        self.sound_mode_display = sound_mode_display_values.get(self.surround_mode, self.surround_mode)
+
+        cal = self._state.get("cal", {})
+        dirac_status = cal.get("diracactive", False)
+        self.slot_names = []
+        self.dirac_slot_name = "Dirac Off"
+        
+        slots = cal.get("slots", [])
+        for slot in slots:
+            if isinstance(slot, dict) and slot.get("valid", False):
+                self.slot_names.append(slot.get("name", ""))
+
+        if dirac_status == "on":
+            slot_idx = cal.get("currentdiracslot", 0)
+            if slots and 0 <= slot_idx < len(slots):
+                self.dirac_slot_name = slots[slot_idx].get("name", "Unknown")
+        elif dirac_status == "bypass":
+            self.dirac_slot_name = "Dirac Bypass"
+
+    def _parse_video_stats(self) -> None:
+        vi = self._state.get("videostat", {})
+        parts = [
+            vi.get("VideoResolution", ""),
+            vi.get("HDRstatus", ""),
+            vi.get("VideoColorSpace", ""),
+            vi.get("VideoMode", ""),
+            vi.get("VideoBitDepth", "")
+        ]
+        self.video_mode = " ".join(p for p in parts if p) or "-----"
+
+    def _update_sensor_data(self) -> None:
         loudness_state = self._state.get("loudness", "off")
         night_mode_state = self._state.get("night", "off")
-        peq_sw = self._state.get("peq", {}).get("peqsw", False)
-        self.beq_active = self._state.get("peq", {}).get("beqActive", "")
-
-        sound_mode = ""
-        if "upmix" in self._state:
-            sound_mode = self._state["upmix"].get("select", "")
-        self.surround_mode = sound_mode
-        self.sound_mode_display = sound_mode_display_values.get(sound_mode, sound_mode)
-
-        audio_format = "none"
-        if "status" in self._state:
-            audio_info = self._state["status"]
-            codec = audio_info.get("DECSourceProgram", "")
-            channels = audio_info.get("DECProgramFormat", "")
-            if channels:
-                audio_format = f"{channels} {codec}".strip() if codec else channels
-
-        output_audio_format = ""
-        if "status" in self._state:
-            output_info = self._state["status"]
-            output_codec = output_info.get("SurroundMode", "")
-            output_channels = output_info.get("ENCListeningFormat", "")
-            if output_channels:
-                output_audio_format = f"{output_channels} {output_codec}".strip() if output_codec else output_channels
-
-        dirac_slot_name = "None"
-        available_slots = []
-        if "cal" in self._state:
-            cal = self._state["cal"]
-            dirac_status = cal.get("diracactive", False)
-            if dirac_status == "on":
-                slot_idx = cal.get("currentdiracslot", 0)
-                slots = cal.get("slots", [])
-                if slots and slot_idx < len(slots):
-                    dirac_slot_name = slots[slot_idx].get("name", "")
-            elif dirac_status == "bypass":
-                dirac_slot_name = "Dirac Bypass"
-            else:
-                dirac_slot_name = "Dirac Off"
-            for slot in cal.get("slots", []):
-                if slot.get("valid", False):
-                    available_slots.append(slot.get("name", ""))
-        self.dirac_slot_name = dirac_slot_name
-        self.slot_names = available_slots
-
-        video_mode = "-----"
-        if "videostat" in self._state:
-            vi = self._state["videostat"]
-            parts = [vi.get("VideoResolution", "")]
-            if vi.get("HDRstatus"):
-                parts.append(vi["HDRstatus"])
-            if vi.get("VideoColorSpace"):
-                parts.append(vi["VideoColorSpace"])
-            if vi.get("VideoMode"):
-                parts.append(vi["VideoMode"])
-            if vi.get("VideoBitDepth"):
-                parts.append(vi["VideoBitDepth"])
-            video_mode = " ".join(p for p in parts if p) or "-----"
+        
+        peq = self._state.get("peq", {})
+        peq_sw = peq.get("peqsw", False)
+        self.beq_active = peq.get("beqActive", "")
 
         self._sensor_data = {
-            "input": source,
-            "volume": f"{self.volume_db}",
+            "input": self.current_source,
+            "volume": str(self.volume_db),
             "mute": "On" if self.muted else "Off",
-            "ss_trim": f"{self.ss_trim}",
+            "ss_trim": str(self.ss_trim),
             "ss_mute": self.ss_mute.capitalize(),
             "ss_preset": self.ss_preset,
             "loudness": str(loudness_state).capitalize() if isinstance(loudness_state, str) else ("On" if loudness_state else "Off"),
             "night_mode": str(night_mode_state).capitalize() if isinstance(night_mode_state, str) else ("On" if night_mode_state else "Off"),
             "peq": "On" if peq_sw else "Off",
             "sound_mode": self.sound_mode_display,
-            "audio_format": audio_format,
-            "output_audio_format": output_audio_format,
-            "dirac_slot": dirac_slot_name,
-            "video_mode": video_mode,
+            "audio_format": getattr(self, 'audio_format', 'none'),
+            "output_audio_format": getattr(self, 'output_audio_format', ''),
+            "dirac_slot": self.dirac_slot_name,
+            "video_mode": self.video_mode,
             "connection": "Connected" if self.is_connected else "Disconnected",
             "beq_active": self.beq_active or "None",
         }
@@ -326,6 +313,9 @@ class HTP1Device(WebSocketDevice):
                 await self._ws.send(message)
                 _LOG.debug("[%s] Sent: %s", self.log_id, message[:200])
                 return True
+            return False
+        except websockets.ConnectionClosed:
+            _LOG.warning("[%s] Send failed: WebSocket connection is closed", self.log_id)
             return False
         except Exception as err:
             _LOG.error("[%s] Send error: %s", self.log_id, err)
@@ -346,6 +336,13 @@ class HTP1Device(WebSocketDevice):
         return await self._send_transaction([
             {"op": "replace", "path": "/powerIsOn", "value": False}
         ])
+    
+    async def toggle_power(self) -> bool:
+        _LOG.info("[%s] Toggling power", self.log_id)
+        new_state = not self.power
+        return await self._send_transaction([
+            {"op": "replace", "path": "/powerIsOn", "value": new_state}
+        ])  
 
     async def set_volume(self, volume: int) -> bool:
         _LOG.info("[%s] Setting volume to %d", self.log_id, volume)
@@ -403,11 +400,7 @@ class HTP1Device(WebSocketDevice):
 
     async def ss_mute_toggle(self, muted: bool) -> bool:
         _LOG.info("[%s] Setting seat shaker mute to %s", self.log_id, muted)
-        if self.ss_mute == "off":
-            status = "on"
-        else:
-            status = "off"
-
+        status = "on" if self.ss_mute == "off" else "off"
         return await self._send_transaction([
             {"op": "replace", "path": "/shaker/mute", "value": status}
         ])
@@ -468,8 +461,14 @@ class HTP1Device(WebSocketDevice):
         _LOG.info("[%s] Sending http command: %s", self.log_id, command)
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"http://{self.address}/ircmd?code={command}") as response:
+                async with session.get(f"http://{self.address}/ircmd?code={command}", timeout=5) as response:
                     return response.status == 200
+        except asyncio.TimeoutError:
+            _LOG.error("[%s] HTTP command timed out", self.log_id)
+            return False
+        except aiohttp.ClientError as err:
+            _LOG.error("[%s] HTTP command connection error: %s", self.log_id, err)
+            return False
         except Exception as err:
             _LOG.error("[%s] HTTP command error: %s", self.log_id, err)
             return False
@@ -503,6 +502,10 @@ class HTP1Device(WebSocketDevice):
                 return i
         return None
 
+    def _get_peq_path(self, slot_idx: int, channel: str, attribute: str) -> str:
+        """Helper to construct the JSON path for PEQ modifications."""
+        return f"/peq/slots/{slot_idx}/channels/{channel}/{attribute}"
+
     async def clear_beq(self) -> bool:
         """Clear all BEQ-tagged filters from all PEQ slots on all sub channels."""
         if not self._state:
@@ -518,11 +521,11 @@ class HTP1Device(WebSocketDevice):
                 ch_data = channels.get(ch, {})
                 if ch_data.get("beq"):
                     ops.extend([
-                        {"op": "replace", "path": f"/peq/slots/{i}/channels/{ch}/Fc", "value": 100},
-                        {"op": "replace", "path": f"/peq/slots/{i}/channels/{ch}/gaindB", "value": 0},
-                        {"op": "replace", "path": f"/peq/slots/{i}/channels/{ch}/Q", "value": 1},
-                        {"op": "replace", "path": f"/peq/slots/{i}/channels/{ch}/FilterType", "value": 0},
-                        {"op": "remove", "path": f"/peq/slots/{i}/channels/{ch}/beq"},
+                        {"op": "replace", "path": self._get_peq_path(i, ch, "Fc"), "value": 100},
+                        {"op": "replace", "path": self._get_peq_path(i, ch, "gaindB"), "value": 0},
+                        {"op": "replace", "path": self._get_peq_path(i, ch, "Q"), "value": 1},
+                        {"op": "replace", "path": self._get_peq_path(i, ch, "FilterType"), "value": 0},
+                        {"op": "remove", "path": self._get_peq_path(i, ch, "beq")},
                     ])
 
         if "beqActive" in peq:
@@ -558,11 +561,11 @@ class HTP1Device(WebSocketDevice):
                     break
 
                 ops.extend([
-                    {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/Fc", "value": freq},
-                    {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/gaindB", "value": gain},
-                    {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/Q", "value": q},
-                    {"op": "replace", "path": f"/peq/slots/{slot_idx}/channels/{ch}/FilterType", "value": ft},
-                    {"op": "add", "path": f"/peq/slots/{slot_idx}/channels/{ch}/beq", "value": True},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "Fc"), "value": freq},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "gaindB"), "value": gain},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "Q"), "value": q},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "FilterType"), "value": ft},
+                    {"op": "add", "path": self._get_peq_path(slot_idx, ch, "beq"), "value": True},
                 ])
             next_slot = slot_idx + 1
 
@@ -576,3 +579,30 @@ class HTP1Device(WebSocketDevice):
             self.beq_active = title
             _LOG.info("[%s] BEQ loaded: %s (%d filters)", self.log_id, title, len(filters))
         return success
+
+
+def apply_json_patch(target: dict | list, op: str, path_str: str, value: Any = None) -> None:
+    """Apply a single JSON patch operation to a target dictionary/list."""
+    if not path_str.startswith("/"):
+        return
+        
+    path = path_str[1:].split("/")
+    final_key = path.pop()
+
+    current = target
+    for node in path:
+        if isinstance(current, list):
+            node = int(node)
+        current = current[node]
+
+    if op == "remove":
+        if isinstance(current, dict):
+            current.pop(final_key, None)
+        elif isinstance(current, list):
+            del current[int(final_key)]
+    elif op in ("add", "replace"):
+        if isinstance(current, list):
+            current[int(final_key)] = value
+        else:
+            current[final_key] = value
+

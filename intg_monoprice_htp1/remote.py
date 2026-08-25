@@ -315,6 +315,10 @@ class HTP1Remote(RemoteEntity):
                 else:
                     success = await self._device.turn_on()
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            
+            if cmd_id == "toggle":
+                success = await self._device.toggle_power()
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             if cmd_id == "VOLUME_UP":
                 return StatusCodes.OK if await self._device.volume_up() else StatusCodes.SERVER_ERROR
