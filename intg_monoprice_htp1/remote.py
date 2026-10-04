@@ -7,6 +7,7 @@ Monoprice HTP-1 Remote entity.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -287,7 +288,7 @@ class HTP1Remote(RemoteEntity):
         super().__init__(
             f"remote.{device_config.identifier}",
             f"{device_config.name} Remote",
-            [Features.TOGGLE],
+            [Features.TOGGLE, Features.SEND_CMD],
             {Attributes.STATE: States.UNKNOWN},
             simple_commands=SIMPLE_COMMANDS,
             button_mapping=BUTTON_MAPPING,
@@ -332,40 +333,90 @@ class HTP1Remote(RemoteEntity):
             
             if cmd_id == Commands.SEND_CMD:
                 command = params.get("command", "") if params else ""
+                if not command:
+                    return StatusCodes.BAD_REQUEST
+                repeat, delay = self._repeat_delay(params)
+                return await self._send_commands([command], repeat, delay)
 
-                http_cmd = HTTP_COMMANDS.get(command)
-                if http_cmd:
-                    success = await self._device.send_http_command(http_cmd)
-                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-                else:
-                    if command == "Seat Shaker Mute Toggle":
-                        success = await self._device.ss_mute_toggle(not self._device.muted)
-                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-            
-                    if command == "Seat Shaker Trim +1":
-                        new_trim = self._device.ss_trim + 1
-                        success = await self._device.set_ss_trim(new_trim)
-                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
-                    if command == "Seat Shaker Trim -1":
-                        new_trim = self._device.ss_trim - 1
-                        success = await self._device.set_ss_trim(new_trim)
-                        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-            
-                    if command.startswith("Seat Shaker Preset "):
-                        preset_num_str = command.replace("Seat Shaker Preset ", "")
-                        if preset_num_str.isdigit():
-                            preset_index = int(preset_num_str) - 1
-                            success = await self._device.select_ss_preset(preset_index)
-                            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-                        else:
-                            return StatusCodes.BAD_REQUEST
-
-                    success = await self._device.send_command(command)
-                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+            if cmd_id == Commands.SEND_CMD_SEQUENCE:
+                sequence = params.get("sequence") if params else None
+                if isinstance(sequence, str):
+                    sequence = sequence.split(",")
+                if not isinstance(sequence, list):
+                    return StatusCodes.BAD_REQUEST
+                commands = [str(c).strip() for c in sequence if str(c).strip()]
+                if not commands:
+                    return StatusCodes.BAD_REQUEST
+                repeat, delay = self._repeat_delay(params)
+                return await self._send_commands(commands, repeat, delay)
 
             return StatusCodes.NOT_IMPLEMENTED
 
         except Exception as err:
             _LOG.error("[%s] Remote command error: %s", self.id, err)
             return StatusCodes.SERVER_ERROR
+
+    @staticmethod
+    def _repeat_delay(params: dict[str, Any] | None) -> tuple[int, float]:
+        """Return (repeat count, delay in seconds) from send_cmd params."""
+        params = params or {}
+        try:
+            repeat = max(1, int(params.get("repeat", 1) or 1))
+        except (TypeError, ValueError):
+            repeat = 1
+        try:
+            delay = max(0, int(params.get("delay", 0) or 0)) / 1000.0
+        except (TypeError, ValueError):
+            delay = 0.0
+        return repeat, delay
+
+    async def _send_commands(
+        self, commands: list[str], repeat: int, delay: float
+    ) -> StatusCodes:
+        """Send commands in order, each repeated, with delay between sends.
+
+        Stops at and returns the first failure.
+        """
+        first = True
+        for command in commands:
+            for _ in range(repeat):
+                if not first and delay:
+                    await asyncio.sleep(delay)
+                first = False
+                status = await self._send_single(command)
+                if status != StatusCodes.OK:
+                    return status
+        return StatusCodes.OK
+
+    async def _send_single(self, command: str) -> StatusCodes:
+        """Send one simple command."""
+        if command == "POWER":
+            success = await self._device.toggle_power()
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        http_cmd = HTTP_COMMANDS.get(command)
+        if http_cmd:
+            success = await self._device.send_http_command(http_cmd)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        if command == "Seat Shaker Mute Toggle":
+            success = await self._device.ss_mute_toggle(self._device.ss_mute == "off")
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        if command == "Seat Shaker Trim +1":
+            success = await self._device.set_ss_trim(self._device.ss_trim + 1)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        if command == "Seat Shaker Trim -1":
+            success = await self._device.set_ss_trim(self._device.ss_trim - 1)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        if command.startswith("Seat Shaker Preset "):
+            preset_num_str = command.replace("Seat Shaker Preset ", "")
+            if not preset_num_str.isdigit():
+                return StatusCodes.BAD_REQUEST
+            success = await self._device.select_ss_preset(int(preset_num_str) - 1)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        success = await self._device.send_command(command)
+        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR

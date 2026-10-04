@@ -24,12 +24,43 @@ _LOG = logging.getLogger(__name__)
 FILTER_TYPE_MAP = {"PeakingEQ": 0, "LowShelf": 1, "HighShelf": 2}
 BEQ_SLOT_START = 0
 BEQ_SLOT_END = 15
+KEEPALIVE_INTERVAL = 20
+KEEPALIVE_TIMEOUT = 10
+PROBE_TIMEOUT = 5.0
+
+
+async def probe_htp1(host: str, timeout: float = PROBE_TIMEOUT) -> str | None:
+    """Open a WebSocket to the HTP-1, request its state and close again.
+
+    :return: None on success, otherwise a short human readable error.
+    """
+    url = f"ws://{host}/ws/controller"
+
+    async def _probe() -> None:
+        async with websockets.connect(url, ping_interval=None, close_timeout=2) as ws:
+            await ws.send("getmso")
+            while True:
+                message = await ws.recv()
+                if isinstance(message, str) and message.startswith("mso "):
+                    return
+
+    try:
+        await asyncio.wait_for(_probe(), timeout=timeout)
+        return None
+    except asyncio.TimeoutError:
+        return f"No response from {host} within {int(timeout)} seconds"
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        return f"Could not connect to {host}: {err}"
+
 
 class HTP1Device(WebSocketDevice):
     """Monoprice HTP-1 implementation using WebSocketDevice."""
 
     def __init__(self, device_config: HTP1Config, **kwargs):
-        super().__init__(device_config, reconnect=True, ping_interval=30, **kwargs)
+        # Keepalive is done by the websockets library (see create_websocket), which
+        # closes a dead connection so recv() returns. The framework ping loop would
+        # only call a no-op send_ping, so it is disabled.
+        super().__init__(device_config, reconnect=True, ping_interval=0, **kwargs)
         self._device_config = device_config
         self._state: dict[str, Any] | None = None
         self._state_ready = asyncio.Event()
@@ -42,6 +73,7 @@ class HTP1Device(WebSocketDevice):
         self.current_source: str = ""
         self.source_list: list[str] = []
         self.slot_names: list[str] = []
+        self._slot_index: dict[str, int] = {}
         self.dirac_slot_name: str = ""
         self.sound_mode_display: str = ""
         self.surround_mode: str = ""
@@ -111,7 +143,8 @@ class HTP1Device(WebSocketDevice):
         logging.getLogger("websockets").setLevel(logging.INFO)
         self._ws = await websockets.connect(
             self.websocket_url,
-            ping_interval=None,
+            ping_interval=KEEPALIVE_INTERVAL,
+            ping_timeout=KEEPALIVE_TIMEOUT,
             close_timeout=5,
         )
         return self._ws
@@ -123,21 +156,28 @@ class HTP1Device(WebSocketDevice):
     async def receive_message(self) -> str | None:
         if not self._ws:
             return None
-        try:
-            message = await self._ws.recv()
-            return message if isinstance(message, str) else None
-        except websockets.ConnectionClosed:
-            _LOG.debug("[%s] WebSocket connection closed by remote", self.log_id)
-            return None
-        except Exception as err:
-            _LOG.error("[%s] Error receiving message: %s", self.log_id, err)
-            return None
+        while True:
+            try:
+                message = await self._ws.recv()
+            except websockets.ConnectionClosed:
+                _LOG.info("[%s] WebSocket connection closed", self.log_id)
+                self._on_connection_lost()
+                return None
+            except Exception as err:
+                _LOG.error("[%s] Error receiving message: %s", self.log_id, err)
+                self._on_connection_lost()
+                return None
+            if isinstance(message, str):
+                return message
+
+    def _on_connection_lost(self) -> None:
+        """Mark the device offline right away so entities show UNAVAILABLE."""
+        self._is_connected = False
+        self._state = None
+        self._state_ready.clear()
+        self.push_update()
 
     async def handle_message(self, message: str) -> None:
-        if self._state is None:
-            _LOG.info("[%s] First message received, requesting initial state", self.log_id)
-            await self.send_message("getmso")
-
         if " " not in message:
             return
 
@@ -157,6 +197,10 @@ class HTP1Device(WebSocketDevice):
             self.push_update()
 
         elif cmd == "msoupdate":
+            if self._state is None:
+                # getmso is sent once on connect; the full state replaces these anyway
+                _LOG.debug("[%s] Ignoring msoupdate before initial state", self.log_id)
+                return
             if not isinstance(data, list):
                 data = [data]
 
@@ -167,7 +211,7 @@ class HTP1Device(WebSocketDevice):
                 
                 try:
                     apply_json_patch(self._state, op, path_str, value)
-                except (KeyError, IndexError, TypeError) as err:
+                except (KeyError, IndexError, TypeError, ValueError) as err:
                     _LOG.error("[%s] Failed to apply JSON patch %s: %s", self.log_id, piece, err)
 
             self._parse_state()
@@ -249,12 +293,15 @@ class HTP1Device(WebSocketDevice):
         cal = self._state.get("cal", {})
         dirac_status = cal.get("diracactive", False)
         self.slot_names = []
+        self._slot_index = {}
         self.dirac_slot_name = "Dirac Off"
-        
+
         slots = cal.get("slots", [])
-        for slot in slots:
+        for idx, slot in enumerate(slots):
             if isinstance(slot, dict) and slot.get("valid", False):
-                self.slot_names.append(slot.get("name", ""))
+                name = slot.get("name", "")
+                self.slot_names.append(name)
+                self._slot_index.setdefault(name, idx)
 
         if dirac_status == "on":
             slot_idx = cal.get("currentdiracslot", 0)
@@ -440,10 +487,11 @@ class HTP1Device(WebSocketDevice):
 
     async def select_calibration(self, slot_name: str) -> bool:
         _LOG.info("[%s] Selecting calibration: %s", self.log_id, slot_name)
-        if slot_name not in self.slot_names:
+        slot_idx = self._slot_index.get(slot_name)
+        if slot_idx is None:
             return False
         return await self._send_transaction([
-            {"op": "replace", "path": "/cal/currentdiracslot", "value": self.slot_names.index(slot_name)}
+            {"op": "replace", "path": "/cal/currentdiracslot", "value": slot_idx}
         ])
 
     async def send_command(self, command: str) -> bool:
@@ -539,8 +587,6 @@ class HTP1Device(WebSocketDevice):
         if not self._state:
             return False
 
-        await self.clear_beq()
-
         sub_channels = self._get_sub_channels()
         if not sub_channels:
             return False
@@ -557,8 +603,12 @@ class HTP1Device(WebSocketDevice):
             for ch in sub_channels:
                 slot_idx = self._find_empty_peq_slot(next_slot, ch)
                 if slot_idx is None:
-                    _LOG.warning("[%s] No empty PEQ slot for BEQ filter", self.log_id)
-                    break
+                    # Check capacity before clearing so the active BEQ is kept
+                    _LOG.warning(
+                        "[%s] Not enough free PEQ slots for BEQ '%s' (%d filters)",
+                        self.log_id, title, len(filters),
+                    )
+                    return False
 
                 ops.extend([
                     {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "Fc"), "value": freq},
@@ -574,6 +624,8 @@ class HTP1Device(WebSocketDevice):
             {"op": "replace", "path": "/peq/peqsw", "value": True},
         ])
 
+        if not await self.clear_beq():
+            return False
         success = await self._send_transaction(ops)
         if success:
             self.beq_active = title
@@ -600,7 +652,15 @@ def apply_json_patch(target: dict | list, op: str, path_str: str, value: Any = N
             current.pop(final_key, None)
         elif isinstance(current, list):
             del current[int(final_key)]
-    elif op in ("add", "replace"):
+    elif op == "add":
+        if isinstance(current, list):
+            if final_key == "-":
+                current.append(value)
+            else:
+                current.insert(int(final_key), value)
+        else:
+            current[final_key] = value
+    elif op == "replace":
         if isinstance(current, list):
             current[int(final_key)] = value
         else:

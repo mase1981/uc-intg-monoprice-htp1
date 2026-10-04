@@ -5,79 +5,86 @@ Monoprice HTP-1 setup flow for Unfolded Circle integration.
 :license: MPL-2.0, see LICENSE for more details.
 """
 
-import asyncio
 import logging
 from typing import Any
 from ucapi import RequestUserInput
 from ucapi_framework import BaseSetupFlow
 from intg_monoprice_htp1.config import HTP1Config
-from intg_monoprice_htp1.device import HTP1Device
+from intg_monoprice_htp1.device import probe_htp1
 
 _LOG = logging.getLogger(__name__)
+
+DEFAULT_NAME = "Monoprice HTP-1"
 
 
 class HTP1SetupFlow(BaseSetupFlow[HTP1Config]):
     """Setup flow for Monoprice HTP-1 integration."""
 
-    def get_manual_entry_form(self) -> RequestUserInput:
-        """Define manual entry fields."""
-        return RequestUserInput(
-            {"en": "Monoprice HTP-1 Setup"},
+    def _existing_config(self) -> HTP1Config | None:
+        """Return the saved config when updating an existing device."""
+        if self._add_mode:
+            return None
+        return self.selected_config_entry
+
+    def _build_form(self, name: str, host: str, error: str | None = None) -> RequestUserInput:
+        settings: list[dict[str, Any]] = []
+        if error:
+            settings.append(
+                {
+                    "id": "error",
+                    "label": {"en": "Error"},
+                    "field": {"label": {"value": {"en": error}}},
+                }
+            )
+        settings.extend(
             [
                 {
                     "id": "name",
                     "label": {"en": "Device Name"},
-                    "field": {"text": {"value": "Monoprice HTP-1"}},
+                    "field": {"text": {"value": name}},
                 },
                 {
                     "id": "host",
                     "label": {"en": "IP Address"},
-                    "field": {"text": {"value": ""}},
+                    "field": {"text": {"value": host}},
                 },
-            ],
+            ]
         )
+        return RequestUserInput({"en": "Monoprice HTP-1 Setup"}, settings)
+
+    def get_manual_entry_form(self) -> RequestUserInput:
+        """Define manual entry fields, prefilled with saved values on update."""
+        existing = self._existing_config()
+        if existing:
+            return self._build_form(existing.name, existing.host)
+        return self._build_form(DEFAULT_NAME, "")
 
     async def query_device(
         self, input_values: dict[str, Any]
     ) -> HTP1Config | RequestUserInput:
-        """
-        Validate connection and create config.
-        Called after user provides info.
-        """
-        host = input_values.get("host", "").strip()
-        if not host:
-            raise ValueError("IP address is required")
+        """Validate the connection and create the config.
 
-        name = input_values.get("name", f"Monoprice HTP-1 ({host})").strip()
+        Errors are returned as the form (with the typed values) so the user can retry.
+        """
+        host = (input_values.get("host") or "").strip()
+        name = (input_values.get("name") or "").strip() or DEFAULT_NAME
+
+        if not host:
+            return self._build_form(name, host, "IP address is required.")
 
         _LOG.info("Setting up Monoprice HTP-1 at %s", host)
-
-        # Test connection
-        try:
-            test_config = HTP1Config(
-                identifier=f"htp1_{host.replace('.', '_')}",
-                name=name,
-                host=host
+        error = await probe_htp1(host)
+        if error:
+            _LOG.warning("HTP-1 setup connection test failed: %s", error)
+            return self._build_form(
+                name,
+                host,
+                f"{error}. Check that the HTP-1 is powered on and reachable, then try again.",
             )
 
-            # Quick connection test
-            test_device = HTP1Device(test_config)
-            connected = await asyncio.wait_for(
-                test_device.connect(),
-                timeout=10.0
-            )
-            await test_device.disconnect()
+        existing = self._existing_config()
+        # Keep the identifier on update so entity IDs and activities stay intact
+        identifier = existing.identifier if existing else f"htp1_{host.replace('.', '_')}"
 
-            if not connected:
-                raise ValueError(f"Failed to connect to {host}")
-
-            _LOG.info("Successfully connected to Monoprice HTP-1 at %s", host)
-            return test_config
-
-        except asyncio.TimeoutError:
-            raise ValueError(
-                f"Connection timeout to {host}\n"
-                "Please verify the HTP-1 is powered on and accessible on the network"
-            ) from None
-        except Exception as err:
-            raise ValueError(f"Setup failed: {err}") from err
+        _LOG.info("Successfully connected to Monoprice HTP-1 at %s", host)
+        return HTP1Config(identifier=identifier, name=name, host=host)
