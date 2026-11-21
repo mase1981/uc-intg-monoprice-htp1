@@ -19,12 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # The publisher workflow is also available from main, but its builder and
-      # catalogue source files live on the hosted-catalogue feature branch.
       - name: Checkout integration
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: perf/hosted-beq-catalogue
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__name__)
 
 CATALOGUE_BASE_URL = (
-    "https://joemacjr92.github.io/uc-intg-monoprice-htp1/beq/"
+    "https://mase1981.github.io/uc-intg-monoprice-htp1/beq/"
 )
 ITEMS_PER_PAGE = 50
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20, connect=5, sock_read=15)
