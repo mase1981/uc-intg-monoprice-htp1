@@ -26,6 +26,7 @@ SIMPLE_COMMANDS = [
     "POWER",
     "VOLUME_UP",
     "VOLUME_DOWN",
+    "Mute Toggle",
     "Mode None",
     "Mode Dolby Sur",
     "Mode Neural-X",
@@ -331,23 +332,44 @@ class HTP1Remote(RemoteEntity):
                 success = await self._device.mute_toggle(not self._device.muted)
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
             
+            # UI-page and button-mapping entries may invoke a simple command
+            # directly instead of wrapping it in remote.send_cmd.
+            if cmd_id in SIMPLE_COMMANDS or cmd_id in HTTP_COMMANDS or cmd_id == "send_avcui: hpe":
+                return await self._send_single(cmd_id)
+
             if cmd_id == Commands.SEND_CMD:
-                command = params.get("command", "") if params else ""
-                if not command:
+                if params is not None and not isinstance(params, dict):
                     return StatusCodes.BAD_REQUEST
-                repeat, delay = self._repeat_delay(params)
-                return await self._send_commands([command], repeat, delay)
+                command = params.get("command") if params else None
+                if not isinstance(command, str) or not command.strip():
+                    return StatusCodes.BAD_REQUEST
+                repeat_delay = self._repeat_delay(params)
+                if repeat_delay is None:
+                    return StatusCodes.BAD_REQUEST
+                repeat, delay = repeat_delay
+                return await self._send_commands([command.strip()], repeat, delay)
 
             if cmd_id == Commands.SEND_CMD_SEQUENCE:
+                if params is not None and not isinstance(params, dict):
+                    return StatusCodes.BAD_REQUEST
                 sequence = params.get("sequence") if params else None
                 if isinstance(sequence, str):
                     sequence = sequence.split(",")
-                if not isinstance(sequence, list):
+                if (
+                    not isinstance(sequence, list)
+                    or not sequence
+                    or any(not isinstance(command, str) for command in sequence)
+                ):
                     return StatusCodes.BAD_REQUEST
-                commands = [str(c).strip() for c in sequence if str(c).strip()]
-                if not commands:
+                commands = [command.strip() for command in sequence if command.strip()]
+                if not commands or len(commands) > 50:
                     return StatusCodes.BAD_REQUEST
-                repeat, delay = self._repeat_delay(params)
+                repeat_delay = self._repeat_delay(params)
+                if repeat_delay is None:
+                    return StatusCodes.BAD_REQUEST
+                repeat, delay = repeat_delay
+                if len(commands) * repeat > 100:
+                    return StatusCodes.BAD_REQUEST
                 return await self._send_commands(commands, repeat, delay)
 
             return StatusCodes.NOT_IMPLEMENTED
@@ -357,18 +379,21 @@ class HTP1Remote(RemoteEntity):
             return StatusCodes.SERVER_ERROR
 
     @staticmethod
-    def _repeat_delay(params: dict[str, Any] | None) -> tuple[int, float]:
-        """Return (repeat count, delay in seconds) from send_cmd params."""
+    def _repeat_delay(params: dict[str, Any] | None) -> tuple[int, float] | None:
+        """Validate repeat/delay and return (repeat count, delay in seconds)."""
         params = params or {}
-        try:
-            repeat = max(1, int(params.get("repeat", 1) or 1))
-        except (TypeError, ValueError):
-            repeat = 1
-        try:
-            delay = max(0, int(params.get("delay", 0) or 0)) / 1000.0
-        except (TypeError, ValueError):
-            delay = 0.0
-        return repeat, delay
+        repeat = params.get("repeat", 1)
+        delay_ms = params.get("delay", 0)
+        if (
+            isinstance(repeat, bool)
+            or not isinstance(repeat, int)
+            or not 1 <= repeat <= 20
+            or isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or not 0 <= delay_ms <= 5000
+        ):
+            return None
+        return repeat, delay_ms / 1000.0
 
     async def _send_commands(
         self, commands: list[str], repeat: int, delay: float
@@ -417,6 +442,10 @@ class HTP1Remote(RemoteEntity):
                 return StatusCodes.BAD_REQUEST
             success = await self._device.select_ss_preset(int(preset_num_str) - 1)
             return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+
+        if command not in SIMPLE_COMMANDS and command != "send_avcui: hpe":
+            _LOG.warning("[%s] Unsupported remote command: %s", self.id, command)
+            return StatusCodes.BAD_REQUEST
 
         success = await self._device.send_command(command)
         return StatusCodes.OK if success else StatusCodes.SERVER_ERROR

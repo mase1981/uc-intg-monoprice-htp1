@@ -66,11 +66,19 @@ class HTP1Select(SelectEntity):
         if cmd_id != Commands.SELECT_OPTION:
             return StatusCodes.NOT_IMPLEMENTED
         option = params.get("option") if params else None
-        if not option:
+        if not isinstance(option, str) or not option:
             return StatusCodes.BAD_REQUEST
-        _LOG.info("[%s] Setting %s to: %s", self._device.log_id, self.name, option)
-        success = await self._command_fn(option)
-        return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+        if not self._device.is_connected:
+            return StatusCodes.SERVER_ERROR
+        try:
+            if option not in self._get_options():
+                return StatusCodes.BAD_REQUEST
+            _LOG.info("[%s] Setting %s to: %s", self._device.log_id, self.name, option)
+            success = await self._command_fn(option)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+        except Exception as err:
+            _LOG.error("[%s] Failed to set %s to %s: %s", self._device.log_id, self.name, option, err)
+            return StatusCodes.SERVER_ERROR
 
 
 def create_selects(config: HTP1Config, device: HTP1Device) -> list[HTP1Select]:
@@ -111,9 +119,9 @@ def create_selects(config: HTP1Config, device: HTP1Device) -> list[HTP1Select]:
             f"select.{device_id}.ss_preset",
             f"{name} Seat Shaker Preset",
             device,
-            lambda opts=[1, 2, 3, 4, 5, 6]: opts,
-            lambda: device.ss_preset,
-            lambda opt: device.select_ss_preset(int(opt)-1),
+            lambda opts=["1", "2", "3", "4", "5", "6"]: opts,
+            lambda: str(device.ss_preset) if 1 <= device.ss_preset <= 6 else "",
+            lambda opt: device.select_ss_preset(int(opt) - 1),
         ),
     ]
 

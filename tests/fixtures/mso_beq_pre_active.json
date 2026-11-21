@@ -1,0 +1,422 @@
+{
+  "powerIsOn": false,
+  "status": {
+    "DiracState": "on"
+  },
+  "cal": {
+    "slots": [
+      {
+        "valid": false,
+        "name": "Slot 0"
+      },
+      {
+        "valid": false,
+        "name": "Slot 1"
+      },
+      {
+        "valid": false,
+        "name": "Slot 2"
+      },
+      {
+        "valid": false,
+        "name": "Slot 3"
+      },
+      {
+        "valid": false,
+        "name": "Slot 4"
+      }
+    ],
+    "currentdiracslot": 4
+  },
+  "peq": {
+    "location": "pre",
+    "peqsw": true,
+    "beqActive": "13 Hours- The Secret Soldiers of Benghazi (2016) (-0.5 gain) BEQ Atmos",
+    "slots": [
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 23,
+            "gaindB": 3.2,
+            "Q": 1,
+            "FilterType": 1,
+            "beq": true
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 34,
+            "gaindB": -3,
+            "Q": 5,
+            "FilterType": 0,
+            "beq": true
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 37,
+            "gaindB": 0.8,
+            "Q": 0.8,
+            "FilterType": 0,
+            "beq": true
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      },
+      {
+        "valid": false,
+        "channels": {
+          "sub1": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub2": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          },
+          "sub3": {
+            "Fc": 100,
+            "gaindB": 0,
+            "Q": 1,
+            "FilterType": 0
+          }
+        }
+      }
+    ]
+  },
+  "speakers": {
+    "groups": {
+      "sub1": {
+        "present": true
+      },
+      "sub2": {
+        "present": true
+      },
+      "sub3": {
+        "present": true
+      }
+    }
+  }
+}

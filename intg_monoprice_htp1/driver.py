@@ -27,5 +27,6 @@ class HTP1Driver(BaseIntegrationDriver[HTP1Device, HTP1Config]):
                 lambda cfg, dev: create_selects(cfg, dev),
             ],
             driver_id="monoprice_htp1",
+            # Start the persistent HTP-1 WebSocket connection before registering entities.
             require_connection_before_registry=True,
         )
