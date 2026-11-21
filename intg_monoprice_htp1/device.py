@@ -6,14 +6,15 @@ Monoprice HTP-1 device implementation for Unfolded Circle integration.
 """
 
 import asyncio
+import copy
 import json
 import logging
-import os
+import math
+import re
 from typing import Any
 
 import aiohttp
 import websockets
-from websockets.client import WebSocketClientProtocol
 
 from ucapi_framework import WebSocketDevice, DeviceEvents
 from intg_monoprice_htp1.config import HTP1Config
@@ -27,6 +28,31 @@ BEQ_SLOT_END = 15
 KEEPALIVE_INTERVAL = 20
 KEEPALIVE_TIMEOUT = 10
 PROBE_TIMEOUT = 5.0
+
+
+def _as_dict(value: Any) -> dict:
+    """Return a nested state object only when it has the expected shape."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list:
+    """Return a nested state array only when it has the expected shape."""
+    return value if isinstance(value, list) else []
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Check a JSON numeric value without leaking conversion overflow."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _number(value: Any, default: float = 0) -> float:
+    """Read a finite numeric state value without accepting booleans or strings."""
+    return value if _is_finite_number(value) else default
 
 
 async def probe_htp1(host: str, timeout: float = PROBE_TIMEOUT) -> str | None:
@@ -64,7 +90,7 @@ class HTP1Device(WebSocketDevice):
         self._device_config = device_config
         self._state: dict[str, Any] | None = None
         self._state_ready = asyncio.Event()
-        self._ws: WebSocketClientProtocol | None = None
+        self._ws: Any | None = None
 
         self.events.on(DeviceEvents.CONNECTED, self._on_connected)
         self.events.on(DeviceEvents.DISCONNECTED, self._on_disconnected)
@@ -102,11 +128,6 @@ class HTP1Device(WebSocketDevice):
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Timeout waiting for initial state", self.log_id)
 
-        if os.getenv("INVOCATION_ID"):
-            _LOG.info("[%s] Running On Remote", self.log_id)
-        else:
-            _LOG.info("[%s] Not Running on Remote Pre-fetch BEQ Catalogue", self.log_id)
-            asyncio.create_task(self._prefetch_beq_catalogue())
 
     async def _on_disconnected(self, identifier: str) -> None:
         _LOG.info("[%s] WebSocket disconnected", self.log_id)
@@ -138,7 +159,7 @@ class HTP1Device(WebSocketDevice):
     def get_sensor_value(self, key: str) -> str:
         return self._sensor_data.get(key, "")
 
-    async def create_websocket(self) -> WebSocketClientProtocol:
+    async def create_websocket(self) -> Any:
         _LOG.info("[%s] Creating WebSocket connection to %s", self.log_id, self.websocket_url)
         logging.getLogger("websockets").setLevel(logging.INFO)
         self._ws = await websockets.connect(
@@ -175,6 +196,7 @@ class HTP1Device(WebSocketDevice):
         self._is_connected = False
         self._state = None
         self._state_ready.clear()
+        self._sensor_data = {}
         self.push_update()
 
     async def handle_message(self, message: str) -> None:
@@ -190,6 +212,9 @@ class HTP1Device(WebSocketDevice):
             return
 
         if cmd == "mso":
+            if not isinstance(data, dict):
+                _LOG.error("[%s] Ignoring invalid full-state payload (%s)", self.log_id, type(data).__name__)
+                return
             self._state = data
             self._state_ready.set()
             _LOG.debug("[%s] Received full state", self.log_id)
@@ -204,16 +229,24 @@ class HTP1Device(WebSocketDevice):
             if not isinstance(data, list):
                 data = [data]
 
-            for piece in data:
-                op = piece.get("op")
-                path_str = piece.get("path", "")
-                value = piece.get("value")
-                
-                try:
-                    apply_json_patch(self._state, op, path_str, value)
-                except (KeyError, IndexError, TypeError, ValueError) as err:
-                    _LOG.error("[%s] Failed to apply JSON patch %s: %s", self.log_id, piece, err)
+            # Apply the whole update to a copy so malformed batches cannot
+            # leave a partially-mutated live receiver snapshot.
+            candidate_state = copy.deepcopy(self._state)
+            try:
+                for piece in data:
+                    if not isinstance(piece, dict):
+                        raise ValueError("patch entry must be an object")
+                    op = piece.get("op")
+                    path_str = piece.get("path", "")
+                    if not isinstance(op, str) or not isinstance(path_str, str):
+                        raise ValueError("patch operation and path must be strings")
+                    apply_json_patch(candidate_state, op, path_str, piece.get("value"))
+            except (KeyError, IndexError, TypeError, ValueError) as err:
+                _LOG.error("[%s] Rejecting incomplete msoupdate; requesting fresh state: %s", self.log_id, err)
+                await self.send_message("getmso")
+                return
 
+            self._state = candidate_state
             self._parse_state()
             self.push_update()
 
@@ -222,113 +255,109 @@ class HTP1Device(WebSocketDevice):
         if not self._state:
             return
 
-        self._parse_power_and_volume()
-        self._parse_seat_shakers()
-        self._parse_inputs()
-        self._parse_audio_and_dirac()
-        self._parse_video_stats()
-        self._update_sensor_data()
+        parsers = (
+            self._parse_power_and_volume,
+            self._parse_seat_shakers,
+            self._parse_inputs,
+            self._parse_audio_and_dirac,
+            self._parse_video_stats,
+            self._update_sensor_data,
+        )
+        for parser in parsers:
+            try:
+                parser()
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError) as err:
+                _LOG.warning("[%s] Ignoring malformed state section in %s: %s", self.log_id, parser.__name__, err)
 
     def _parse_power_and_volume(self) -> None:
-        self.power = self._state.get("powerIsOn", False)
-        self.muted = self._state.get("muted", False)
-
-        volume = self._state.get("volume", 0)
-        cal = self._state.get("cal", {})
-        
-        self.zp = cal.get("zeroPoint", 0)
-        self.vpl = cal.get("vpl", -80)
-        self.vph = cal.get("vph", 12)
-        
-        self.volume_db = volume - self.zp
-
+        state = _as_dict(self._state)
+        power = state.get("powerIsOn", False)
+        muted = state.get("muted", False)
+        self.power = power if isinstance(power, bool) else False
+        self.muted = muted if isinstance(muted, bool) else False
+        cal = _as_dict(state.get("cal"))
+        self.zp = _number(cal.get("zeroPoint"), 0)
+        self.vpl = _number(cal.get("vpl"), -80)
+        self.vph = _number(cal.get("vph"), 12)
+        self.volume_db = _number(state.get("volume"), 0) - self.zp
     def _parse_seat_shakers(self) -> None:
-        shaker = self._state.get("shaker", {})
-        if not shaker:
-            self.ss_mute = "off"
-            self.ss_preset = 0
-            self.ss_trim = 0
-            return
-
-        self.ss_mute = shaker.get("mute", "off")
-        self.ss_preset = shaker.get("activePreset", 0) + 1
-        
-        presets = shaker.get("presets", {})
-        active_preset_str = str(shaker.get("activePreset", ""))
-        current_preset = presets.get(active_preset_str, {})
-        
-        self.ss_trim = current_preset.get("trim", 0)
+        shaker = _as_dict(_as_dict(self._state).get("shaker"))
+        mute = shaker.get("mute", "off")
+        self.ss_mute = mute if isinstance(mute, str) else "off"
+        active = _number(shaker.get("activePreset"), -1)
+        active_index = int(active)
+        self.ss_preset = active_index + 1 if 0 <= active_index <= 5 else 0
+        presets = _as_dict(shaker.get("presets"))
+        preset = _as_dict(presets.get(str(active_index)))
+        self.ss_trim = _number(preset.get("trim"), 0)
 
     def _parse_inputs(self) -> None:
-        input_id = self._state.get("input", "")
+        state = _as_dict(self._state)
+        input_id = state.get("input", "")
         self.source_list = []
         self.current_source = ""
-        
-        inputs = self._state.get("inputs", {})
-        for inp_id, inp_info in inputs.items():
-            if not isinstance(inp_info, dict):
+        for inp_id, info in _as_dict(state.get("inputs")).items():
+            if not isinstance(info, dict):
                 continue
-                
-            label = inp_info.get("label", inp_id)
-            if inp_info.get("visible", False):
+            label = info.get("label", inp_id)
+            if not isinstance(label, str):
+                continue
+            if info.get("visible") is True:
                 self.source_list.append(label)
-                
             if inp_id == input_id:
                 self.current_source = label
 
     def _parse_audio_and_dirac(self) -> None:
-        audio_info = self._state.get("status", {})
-        codec = audio_info.get("DECSourceProgram", "")
-        channels = audio_info.get("DECProgramFormat", "")
+        state = _as_dict(self._state)
+        audio = _as_dict(state.get("status"))
+        codec = audio.get("DECSourceProgram", "")
+        channels = audio.get("DECProgramFormat", "")
+        codec = codec if isinstance(codec, str) else ""
+        channels = channels if isinstance(channels, str) else ""
         self.audio_format = f"{channels} {codec}".strip() if codec else (channels or "none")
-
-        output_codec = audio_info.get("SurroundMode", "")
-        output_channels = audio_info.get("ENCListeningFormat", "")
-        self.output_audio_format = f"{output_channels} {output_codec}".strip() if output_codec else output_channels
-
-        upmix = self._state.get("upmix", {})
-        self.surround_mode = upmix.get("select", "")
+        out_codec = audio.get("SurroundMode", "")
+        out_channels = audio.get("ENCListeningFormat", "")
+        out_codec = out_codec if isinstance(out_codec, str) else ""
+        out_channels = out_channels if isinstance(out_channels, str) else ""
+        self.output_audio_format = f"{out_channels} {out_codec}".strip() if out_codec else out_channels
+        upmix = _as_dict(state.get("upmix"))
+        selected = upmix.get("select", "")
+        self.surround_mode = selected if isinstance(selected, str) else ""
         self.sound_mode_display = sound_mode_display_values.get(self.surround_mode, self.surround_mode)
-
-        cal = self._state.get("cal", {})
+        cal = _as_dict(state.get("cal"))
         dirac_status = cal.get("diracactive", False)
         self.slot_names = []
         self._slot_index = {}
         self.dirac_slot_name = "Dirac Off"
-
-        slots = cal.get("slots", [])
+        slots = _as_list(cal.get("slots"))
         for idx, slot in enumerate(slots):
-            if isinstance(slot, dict) and slot.get("valid", False):
-                name = slot.get("name", "")
+            if not isinstance(slot, dict) or slot.get("valid") is not True:
+                continue
+            name = slot.get("name", "")
+            if isinstance(name, str) and name:
                 self.slot_names.append(name)
                 self._slot_index.setdefault(name, idx)
-
-        if dirac_status == "on":
-            slot_idx = cal.get("currentdiracslot", 0)
-            if slots and 0 <= slot_idx < len(slots):
-                self.dirac_slot_name = slots[slot_idx].get("name", "Unknown")
+        slot_idx = cal.get("currentdiracslot", 0)
+        if dirac_status == "on" and isinstance(slot_idx, int) and not isinstance(slot_idx, bool):
+            if 0 <= slot_idx < len(slots):
+                name = _as_dict(slots[slot_idx]).get("name", "Unknown")
+                self.dirac_slot_name = name if isinstance(name, str) else "Unknown"
         elif dirac_status == "bypass":
             self.dirac_slot_name = "Dirac Bypass"
 
     def _parse_video_stats(self) -> None:
-        vi = self._state.get("videostat", {})
-        parts = [
-            vi.get("VideoResolution", ""),
-            vi.get("HDRstatus", ""),
-            vi.get("VideoColorSpace", ""),
-            vi.get("VideoMode", ""),
-            vi.get("VideoBitDepth", "")
-        ]
-        self.video_mode = " ".join(p for p in parts if p) or "-----"
+        vi = _as_dict(_as_dict(self._state).get("videostat"))
+        keys = ("VideoResolution", "HDRstatus", "VideoColorSpace", "VideoMode", "VideoBitDepth")
+        parts = [vi.get(key, "") for key in keys]
+        self.video_mode = " ".join(p for p in parts if isinstance(p, str) and p) or "-----"
 
     def _update_sensor_data(self) -> None:
-        loudness_state = self._state.get("loudness", "off")
-        night_mode_state = self._state.get("night", "off")
-        
-        peq = self._state.get("peq", {})
-        peq_sw = peq.get("peqsw", False)
-        self.beq_active = peq.get("beqActive", "")
-
+        state = _as_dict(self._state)
+        loudness = state.get("loudness", "off")
+        night = state.get("night", "off")
+        peq = _as_dict(state.get("peq"))
+        active = peq.get("beqActive", "")
+        self.beq_active = active if isinstance(active, str) else ""
         self._sensor_data = {
             "input": self.current_source,
             "volume": str(self.volume_db),
@@ -336,23 +365,17 @@ class HTP1Device(WebSocketDevice):
             "ss_trim": str(self.ss_trim),
             "ss_mute": self.ss_mute.capitalize(),
             "ss_preset": self.ss_preset,
-            "loudness": str(loudness_state).capitalize() if isinstance(loudness_state, str) else ("On" if loudness_state else "Off"),
-            "night_mode": str(night_mode_state).capitalize() if isinstance(night_mode_state, str) else ("On" if night_mode_state else "Off"),
-            "peq": "On" if peq_sw else "Off",
+            "loudness": loudness.capitalize() if isinstance(loudness, str) else ("On" if loudness is True else "Off"),
+            "night_mode": night.capitalize() if isinstance(night, str) else ("On" if night is True else "Off"),
+            "peq": "On" if peq.get("peqsw") is True else "Off",
             "sound_mode": self.sound_mode_display,
-            "audio_format": getattr(self, 'audio_format', 'none'),
-            "output_audio_format": getattr(self, 'output_audio_format', ''),
+            "audio_format": getattr(self, "audio_format", "none"),
+            "output_audio_format": getattr(self, "output_audio_format", ""),
             "dirac_slot": self.dirac_slot_name,
-            "video_mode": self.video_mode,
+            "video_mode": getattr(self, "video_mode", "-----"),
             "connection": "Connected" if self.is_connected else "Disconnected",
             "beq_active": self.beq_active or "None",
         }
-
-    @staticmethod
-    async def _prefetch_beq_catalogue() -> None:
-        from intg_monoprice_htp1.browser import prefetch_catalogue, start_refresh_loop
-        await prefetch_catalogue()
-        # await start_refresh_loop()
 
     async def send_message(self, message: str) -> bool:
         try:
@@ -392,13 +415,23 @@ class HTP1Device(WebSocketDevice):
         ])  
 
     async def set_volume(self, volume: int) -> bool:
+        if (
+            isinstance(volume, bool)
+            or not isinstance(volume, int)
+            or not _is_finite_number(self.vpl)
+            or not _is_finite_number(self.vph)
+            or self.vpl > self.vph
+            or not self.vpl <= volume <= self.vph
+        ):
+            _LOG.warning("[%s] Rejecting invalid volume value: %r", self.log_id, volume)
+            return False
         _LOG.info("[%s] Setting volume to %d", self.log_id, volume)
         return await self._send_transaction([
             {"op": "replace", "path": "/volume", "value": volume}
         ])
 
     async def set_volume_level(self, level: float) -> bool:
-        if not self._state or "cal" not in self._state:
+        if isinstance(level, bool) or not _is_finite_number(level) or not self._state or "cal" not in self._state:
             return False
 
         span = self.vph - self.vpl
@@ -440,30 +473,37 @@ class HTP1Device(WebSocketDevice):
         return await self.set_volume(current - 1)
 
     async def mute_toggle(self, muted: bool) -> bool:
+        if not isinstance(muted, bool):
+            return False
         _LOG.info("[%s] Setting mute to %s", self.log_id, muted)
         return await self._send_transaction([
             {"op": "replace", "path": "/muted", "value": muted}
         ])
 
     async def ss_mute_toggle(self, muted: bool) -> bool:
+        if not isinstance(muted, bool):
+            return False
         _LOG.info("[%s] Setting seat shaker mute to %s", self.log_id, muted)
-        status = "on" if self.ss_mute == "off" else "off"
+        status = "on" if muted else "off"
         return await self._send_transaction([
             {"op": "replace", "path": "/shaker/mute", "value": status}
         ])
     
     async def set_ss_trim(self, trim: int) -> bool:
+        if isinstance(trim, bool) or not isinstance(trim, int):
+            return False
         _LOG.info("[%s] Setting seat shaker trim to %d", self.log_id, trim)
         return await self._send_transaction([
             {"op": "replace", "path": "/shaker/trim", "value": trim}
         ])
 
     async def select_source(self, source: str) -> bool:
-        _LOG.info("[%s] Selecting source: %s", self.log_id, source)
-        if not self._state or "inputs" not in self._state:
+        if not isinstance(source, str) or not source.strip() or not self._state:
             return False
-        for inp_id, inp_info in self._state["inputs"].items():
-            if inp_info.get("label") == source:
+        _LOG.info("[%s] Selecting source: %s", self.log_id, source)
+        inputs = _as_dict(self._state.get("inputs"))
+        for inp_id, inp_info in inputs.items():
+            if isinstance(inp_info, dict) and inp_info.get("label") == source:
                 return await self._send_transaction([
                     {"op": "replace", "path": "/input", "value": inp_id}
                 ])
@@ -472,14 +512,19 @@ class HTP1Device(WebSocketDevice):
 
     async def select_sound_mode(self, sound_mode: str) -> bool:
         _LOG.info("[%s] Selecting sound mode: %s", self.log_id, sound_mode)
-        native = sound_mode_native_values.get(sound_mode, sound_mode)
+        native = sound_mode_native_values.get(sound_mode)
+        if native is None:
+            _LOG.warning("[%s] Unsupported sound mode: %s", self.log_id, sound_mode)
+            return False
         return await self._send_transaction([
             {"op": "replace", "path": "/upmix/select", "value": native}
         ])
     
     async def select_ss_preset(self, preset_index: int) -> bool:
+        if isinstance(preset_index, bool) or not isinstance(preset_index, int):
+            return False
         _LOG.info("[%s] Selecting seat shaker preset: %d", self.log_id, preset_index)
-        if not self._state or "shaker" not in self._state:
+        if not self._state or "shaker" not in self._state or not 0 <= preset_index <= 5:
             return False
         return await self._send_transaction([
             {"op": "replace", "path": "/shaker/activePreset", "value": preset_index}
@@ -506,6 +551,13 @@ class HTP1Device(WebSocketDevice):
         return await self.send_message(htp1_command)
 
     async def send_http_command(self, command: str) -> bool:
+        if (
+            not isinstance(command, str)
+            or len(command) != 4
+            or any(char not in "0123456789abcdefABCDEF" for char in command)
+        ):
+            _LOG.warning("[%s] Rejecting invalid IR command code", self.log_id)
+            return False
         _LOG.info("[%s] Sending http command: %s", self.log_id, command)
         try:
             async with aiohttp.ClientSession() as session:
@@ -522,147 +574,268 @@ class HTP1Device(WebSocketDevice):
             return False
 
     def _get_sub_channels(self) -> list[str]:
+        """Return the subwoofer PEQ channels used by the established BEQ path.
+
+        The HTP-1's Pre placement targets Sub1 only. Other PEQ placements
+        target each configured subwoofer output, matching the original
+        Python integration behavior.
+        """
         if not self._state:
             return ["sub1"]
 
-        peq_location = self._state.get("peq", {}).get("location", "")
-        if peq_location == "pre":
+        peq = _as_dict(self._state.get("peq"))
+        if peq.get("location") == "pre":
             return ["sub1"]
 
-        speakers = self._state.get("speakers", {}).get("groups", {})
-        subs = []
-        for key, val in speakers.items():
-            if key.startswith("sub") and isinstance(val, dict):
-                if val.get("present", False):
-                    subs.append(key)
-        return subs or ["sub1"]
+        speakers = _as_dict(self._state.get("speakers"))
+        groups = _as_dict(speakers.get("groups"))
+        channels = [
+            key
+            for key, value in groups.items()
+            if isinstance(key, str)
+            and key.startswith("sub")
+            and isinstance(value, dict)
+            and value.get("present") is True
+        ]
+        return channels or ["sub1"]
 
     def _find_empty_peq_slot(self, start_slot: int = BEQ_SLOT_START, ch: str | None = None) -> int | None:
-        if not self._state:
+        """Find a reusable band with a complete PEQ record for this channel."""
+        if (
+            not self._state
+            or isinstance(start_slot, bool)
+            or not isinstance(start_slot, int)
+            or not isinstance(ch, str)
+        ):
             return None
-        peq = self._state.get("peq", {})
-        slots = peq.get("slots", [])
 
-        for i in range(start_slot, min(BEQ_SLOT_END + 1, len(slots))):
-            channels = slots[i].get("channels", {})
-            ch_data = channels.get(ch, {})
-            if ch_data.get("gaindB", 0) == 0 or ch_data.get("beq"):
-                return i
+        peq = _as_dict(self._state.get("peq"))
+        slots = _as_list(peq.get("slots"))
+        required = ("Fc", "gaindB", "Q", "FilterType")
+
+        for index in range(max(0, start_slot), min(BEQ_SLOT_END + 1, len(slots))):
+            slot = _as_dict(slots[index])
+            channels = _as_dict(slot.get("channels"))
+            channel_data = _as_dict(channels.get(ch))
+            if not all(key in channel_data for key in required):
+                continue
+
+            freq = channel_data.get("Fc")
+            gain = channel_data.get("gaindB")
+            q_value = channel_data.get("Q")
+            filter_type = channel_data.get("FilterType")
+            if (
+                not _is_finite_number(freq)
+                or not _is_finite_number(gain)
+                or not _is_finite_number(q_value)
+                or isinstance(filter_type, bool)
+                or not isinstance(filter_type, int)
+                or filter_type not in FILTER_TYPE_MAP.values()
+            ):
+                continue
+            if gain == 0 or channel_data.get("beq") is True:
+                return index
+
         return None
 
     def _get_peq_path(self, slot_idx: int, channel: str, attribute: str) -> str:
         """Helper to construct the JSON path for PEQ modifications."""
         return f"/peq/slots/{slot_idx}/channels/{channel}/{attribute}"
 
-    async def clear_beq(self) -> bool:
-        """Clear all BEQ-tagged filters from all PEQ slots on all sub channels."""
+    def _build_clear_beq_ops(self) -> list[dict[str, Any]] | None:
+        """Reset every BEQ-tagged band, including legacy subwoofer tags."""
         if not self._state:
-            return False
-        ops: list[dict] = []
-        peq = self._state.get("peq", {})
-        slots = peq.get("slots", [])
-        all_subs = self._get_sub_channels()
+            return None
 
-        for i in range(min(16, len(slots))):
-            channels = slots[i].get("channels", {})
-            for ch in all_subs:
-                ch_data = channels.get(ch, {})
-                if ch_data.get("beq"):
-                    ops.extend([
-                        {"op": "replace", "path": self._get_peq_path(i, ch, "Fc"), "value": 100},
-                        {"op": "replace", "path": self._get_peq_path(i, ch, "gaindB"), "value": 0},
-                        {"op": "replace", "path": self._get_peq_path(i, ch, "Q"), "value": 1},
-                        {"op": "replace", "path": self._get_peq_path(i, ch, "FilterType"), "value": 0},
-                        {"op": "remove", "path": self._get_peq_path(i, ch, "beq")},
-                    ])
+        peq = self._state.get("peq")
+        if not isinstance(peq, dict):
+            return None
+        slots = peq.get("slots")
+        if not isinstance(slots, list) or not slots:
+            return None
+
+        ops: list[dict[str, Any]] = []
+        required = ("Fc", "gaindB", "Q", "FilterType")
+        for index, slot in enumerate(slots[:BEQ_SLOT_END + 1]):
+            channels = _as_dict(_as_dict(slot).get("channels"))
+            for channel, raw_channel_data in channels.items():
+                if not isinstance(channel, str):
+                    continue
+                channel_data = _as_dict(raw_channel_data)
+                if channel_data.get("beq") is not True:
+                    continue
+                filter_type = channel_data.get("FilterType")
+                if (
+                    not all(key in channel_data for key in required)
+                    or any(not _is_finite_number(channel_data.get(key)) for key in ("Fc", "gaindB", "Q"))
+                    or isinstance(filter_type, bool)
+                    or not isinstance(filter_type, int)
+                    or filter_type not in FILTER_TYPE_MAP.values()
+                ):
+                    _LOG.error(
+                        "[%s] Cannot clear malformed BEQ slot %d for %s",
+                        self.log_id, index, channel,
+                    )
+                    return None
+                ops.extend([
+                    {"op": "replace", "path": self._get_peq_path(index, channel, "Fc"), "value": 100},
+                    {"op": "replace", "path": self._get_peq_path(index, channel, "gaindB"), "value": 0},
+                    {"op": "replace", "path": self._get_peq_path(index, channel, "Q"), "value": 1},
+                    {"op": "replace", "path": self._get_peq_path(index, channel, "FilterType"), "value": 0},
+                    {"op": "remove", "path": self._get_peq_path(index, channel, "beq")},
+                ])
 
         if "beqActive" in peq:
             ops.append({"op": "remove", "path": "/peq/beqActive"})
+        return ops
 
-        if ops:
-            return await self._send_transaction(ops)
-        return True
+    async def clear_beq(self) -> bool:
+        """Clear BEQ-tagged bands, including tags left on legacy sub channels."""
+        ops = self._build_clear_beq_ops()
+        if ops is None:
+            return False
+        return await self._send_transaction(ops) if ops else True
 
     async def load_beq(self, title: str, filters: list[dict]) -> bool:
-        if not self._state:
+        """Load a BEQ using available PEQ bands without disturbing it on preflight failure."""
+        if not self._state or not isinstance(title, str) or not title.strip():
+            return False
+        if not isinstance(filters, list) or not 1 <= len(filters) <= BEQ_SLOT_END + 1:
+            return False
+
+        # Match the HTP-1 BEQ application path: normalize numeric values to
+        # the processor limits rather than rejecting imported catalogue data.
+        normalized_filters: list[dict[str, Any]] = []
+        for filt in filters:
+            if not isinstance(filt, dict):
+                return False
+            filter_type = filt.get("type", "PeakingEQ")
+            if not isinstance(filter_type, str) or filter_type not in FILTER_TYPE_MAP:
+                return False
+            values = {key: filt.get(key, default) for key, default in (
+                ("freq", 100), ("gain", 0), ("q", 1)
+            )}
+            if any(
+                not _is_finite_number(value)
+                for value in values.values()
+            ):
+                return False
+            normalized_filters.append({
+                "type": filter_type,
+                "freq": min(max(values["freq"], 10), 20000),
+                "gain": min(max(values["gain"], -99), 20),
+                "q": min(max(values["q"], 0.1), 10),
+            })
+
+        peq = self._state.get("peq")
+        if not isinstance(peq, dict) or not isinstance(peq.get("peqsw"), bool):
+            _LOG.warning("[%s] BEQ requires a valid PEQ state", self.log_id)
+            return False
+        slots = peq.get("slots")
+        if not isinstance(slots, list) or not slots:
             return False
 
         sub_channels = self._get_sub_channels()
         if not sub_channels:
             return False
 
-        ops = []
         next_slot = BEQ_SLOT_START
-
-        for filt in filters:
-            ft = FILTER_TYPE_MAP.get(filt.get("type", "PeakingEQ"), 0)
-            freq = filt.get("freq", 100)
-            gain = filt.get("gain", 0)
-            q = filt.get("q", 1)
-
-            for ch in sub_channels:
-                slot_idx = self._find_empty_peq_slot(next_slot, ch)
+        filter_ops: list[dict[str, Any]] = []
+        for filt in normalized_filters:
+            last_slot = None
+            for channel in sub_channels:
+                slot_idx = self._find_empty_peq_slot(next_slot, channel)
                 if slot_idx is None:
-                    # Check capacity before clearing so the active BEQ is kept
                     _LOG.warning(
-                        "[%s] Not enough free PEQ slots for BEQ '%s' (%d filters)",
-                        self.log_id, title, len(filters),
+                        "[%s] Not enough free PEQ slots for BEQ '%s' on %s (%d filters)",
+                        self.log_id, title, channel, len(filters),
                     )
                     return False
 
-                ops.extend([
-                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "Fc"), "value": freq},
-                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "gaindB"), "value": gain},
-                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "Q"), "value": q},
-                    {"op": "replace", "path": self._get_peq_path(slot_idx, ch, "FilterType"), "value": ft},
-                    {"op": "add", "path": self._get_peq_path(slot_idx, ch, "beq"), "value": True},
+                filter_ops.extend([
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, channel, "Fc"), "value": filt["freq"]},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, channel, "gaindB"), "value": filt["gain"]},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, channel, "Q"), "value": filt["q"]},
+                    {"op": "replace", "path": self._get_peq_path(slot_idx, channel, "FilterType"), "value": FILTER_TYPE_MAP[filt["type"]]},
+                    {"op": "add", "path": self._get_peq_path(slot_idx, channel, "beq"), "value": True},
                 ])
-            next_slot = slot_idx + 1
+                last_slot = slot_idx if last_slot is None else max(last_slot, slot_idx)
+            if last_slot is None:
+                return False
+            next_slot = last_slot + 1
 
-        ops.extend([
-            {"op": "add", "path": "/peq/beqActive", "value": title},
-            {"op": "replace", "path": "/peq/peqsw", "value": True},
-        ])
-
-        if not await self.clear_beq():
+        clear_ops = self._build_clear_beq_ops()
+        if clear_ops is None:
             return False
+
+        # Send cleanup and replacement together. A preflight or send failure
+        # no longer clears the current BEQ in a separate earlier transaction.
+        ops = clear_ops + filter_ops + [
+            {"op": "add", "path": "/peq/beqActive", "value": title.strip()},
+            {"op": "replace", "path": "/peq/peqsw", "value": True},
+        ]
         success = await self._send_transaction(ops)
         if success:
-            self.beq_active = title
-            _LOG.info("[%s] BEQ loaded: %s (%d filters)", self.log_id, title, len(filters))
+            self.beq_active = title.strip()
+            _LOG.info("[%s] BEQ loaded: %s (%d filters)", self.log_id, title.strip(), len(filters))
         return success
 
 
 def apply_json_patch(target: dict | list, op: str, path_str: str, value: Any = None) -> None:
     """Apply a single JSON patch operation to a target dictionary/list."""
-    if not path_str.startswith("/"):
-        return
-        
-    path = path_str[1:].split("/")
+    if not isinstance(target, (dict, list)) or not isinstance(path_str, str) or not path_str.startswith("/"):
+        raise ValueError("Invalid JSON patch target or path")
+    if op not in ("add", "remove", "replace"):
+        raise ValueError(f"Unsupported JSON patch operation: {op}")
+
+    raw_path = path_str[1:].split("/")
+    path = []
+    for segment in raw_path:
+        if re.search(r"~(?![01])", segment):
+            raise ValueError("Invalid JSON pointer escape")
+        path.append(segment.replace("~1", "/").replace("~0", "~"))
     final_key = path.pop()
 
     current = target
     for node in path:
         if isinstance(current, list):
-            node = int(node)
-        current = current[node]
+            if not node.isdecimal():
+                raise ValueError("Invalid JSON patch array index")
+            index = int(node)
+            if index >= len(current):
+                raise IndexError("JSON patch array index out of range")
+            current = current[index]
+        elif isinstance(current, dict):
+            current = current[node]
+        else:
+            raise TypeError("JSON patch path traverses a scalar value")
 
-    if op == "remove":
-        if isinstance(current, dict):
+    if isinstance(current, list):
+        if op == "add" and final_key == "-":
+            current.append(value)
+            return
+        if not final_key.isdecimal():
+            raise ValueError("Invalid JSON patch array index")
+        index = int(final_key)
+        if op == "add":
+            if index > len(current):
+                raise IndexError("JSON patch insertion index out of range")
+            current.insert(index, value)
+        elif index >= len(current):
+            raise IndexError("JSON patch array index out of range")
+        elif op == "remove":
+            del current[index]
+        else:
+            current[index] = value
+    elif isinstance(current, dict):
+        if op == "remove":
             current.pop(final_key, None)
-        elif isinstance(current, list):
-            del current[int(final_key)]
-    elif op == "add":
-        if isinstance(current, list):
-            if final_key == "-":
-                current.append(value)
-            else:
-                current.insert(int(final_key), value)
+        elif op == "replace":
+            if final_key not in current:
+                raise KeyError(final_key)
+            current[final_key] = value
         else:
             current[final_key] = value
-    elif op == "replace":
-        if isinstance(current, list):
-            current[int(final_key)] = value
-        else:
-            current[final_key] = value
+    else:
+        raise TypeError("JSON patch target is a scalar value")
 

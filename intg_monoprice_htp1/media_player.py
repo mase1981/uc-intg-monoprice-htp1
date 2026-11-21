@@ -94,10 +94,6 @@ class HTP1MediaPlayer(MediaPlayerEntity):
         from intg_monoprice_htp1 import browser
         return await browser.search(self._device, options)
     
-    async def clear_cache(self) -> SearchResults | StatusCodes:
-        from intg_monoprice_htp1 import browser
-        return await browser.clear_cache()
-
     async def _handle_command(
         self, entity: Any, cmd_id: str, params: dict[str, Any] | None
     ) -> StatusCodes:
@@ -111,10 +107,15 @@ class HTP1MediaPlayer(MediaPlayerEntity):
                 return StatusCodes.OK if await self._device.turn_off() else StatusCodes.SERVER_ERROR
 
             if cmd_id == Commands.VOLUME:
-                if params and "volume" in params:
-                    success = await self._device.set_volume_level(float(params["volume"]) / 100.0)
-                    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-                return StatusCodes.BAD_REQUEST
+                if params is not None and not isinstance(params, dict):
+                    return StatusCodes.BAD_REQUEST
+                value = params.get("volume") if params else None
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    return StatusCodes.BAD_REQUEST
+                if not 0 <= value <= 100:
+                    return StatusCodes.BAD_REQUEST
+                success = await self._device.set_volume_level(value / 100.0)
+                return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
             if cmd_id == Commands.VOLUME_UP:
                 return StatusCodes.OK if await self._device.volume_up() else StatusCodes.SERVER_ERROR
@@ -132,14 +133,20 @@ class HTP1MediaPlayer(MediaPlayerEntity):
                 return StatusCodes.OK if await self._device.mute_toggle(False) else StatusCodes.SERVER_ERROR
 
             if cmd_id == Commands.SELECT_SOURCE:
-                if params and "source" in params:
-                    return StatusCodes.OK if await self._device.select_source(params["source"]) else StatusCodes.SERVER_ERROR
-                return StatusCodes.BAD_REQUEST
+                if params is not None and not isinstance(params, dict):
+                    return StatusCodes.BAD_REQUEST
+                source = params.get("source") if params else None
+                if not isinstance(source, str) or not source.strip():
+                    return StatusCodes.BAD_REQUEST
+                return StatusCodes.OK if await self._device.select_source(source.strip()) else StatusCodes.SERVER_ERROR
 
             if cmd_id == Commands.SELECT_SOUND_MODE:
-                if params and "mode" in params:
-                    return StatusCodes.OK if await self._device.select_sound_mode(params["mode"]) else StatusCodes.SERVER_ERROR
-                return StatusCodes.BAD_REQUEST
+                if params is not None and not isinstance(params, dict):
+                    return StatusCodes.BAD_REQUEST
+                mode = params.get("mode") if params else None
+                if not isinstance(mode, str) or not mode.strip():
+                    return StatusCodes.BAD_REQUEST
+                return StatusCodes.OK if await self._device.select_sound_mode(mode.strip()) else StatusCodes.SERVER_ERROR
 
             if cmd_id == Commands.PLAY_MEDIA:
                 return await self._handle_play_media(params)
@@ -151,25 +158,22 @@ class HTP1MediaPlayer(MediaPlayerEntity):
             return StatusCodes.SERVER_ERROR
 
     async def _handle_play_media(self, params: dict[str, Any] | None) -> StatusCodes:
-        if not params:
+        if not isinstance(params, dict):
             return StatusCodes.BAD_REQUEST
 
-        media_id = params.get("media_id", "")
-        if not media_id:
+        media_id = params.get("media_id")
+        if not isinstance(media_id, str) or not media_id.strip():
             return StatusCodes.BAD_REQUEST
+        media_id = media_id.strip()
 
         if media_id == "beq:clear":
             success = await self._device.clear_beq()
             return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
         
-        if media_id == "beq:reload":
-            success = await self.clear_cache()
-            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
-
         if media_id.startswith("beq:"):
             from intg_monoprice_htp1.browser import get_beq_entry
             key = media_id[4:]
-            entry = get_beq_entry(key)
+            entry = await get_beq_entry(key)
             if not entry:
                 _LOG.error("[%s] BEQ entry not found for key: %s", self.id, key)
                 return StatusCodes.BAD_REQUEST
