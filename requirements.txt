@@ -2,3 +2,4 @@ ucapi==0.7.0
 ucapi-framework==1.9.9
 aiohttp>=3.9.0,<4
 websockets>=12.0,<16
+certifi>=2024.2.2
