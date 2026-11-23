@@ -100,7 +100,7 @@ The HTP-1 can report the requested slot index before its DSP has finished applyi
 - An Unfolded Circle Remote 2 or Remote 3.
 - A Monoprice HTP-1 connected to your network and powered on during setup.
 - The Remote (or the Docker host) must be able to reach the HTP-1's IP address.
-- The HTP-1 control connection uses WebSocket on **port 80**, at `/ws/controller`.
+- The HTP-1 control connection uses the configured HTTP / WebSocket port (default **80**) at `/ws/controller`. The port can be changed during setup to match your HTP-1 network configuration.
 - The hosted BEQ catalogue requires outbound internet access to GitHub Pages over HTTPS.
 
 The Remote and HTP-1 do not have to be on the same subnet if your network routes traffic between them and the firewall allows the connection. A DHCP reservation for the HTP-1 is recommended so its address does not change.
@@ -165,8 +165,8 @@ The Docker host must be able to reach the HTP-1 and access the internet for the 
 2. Install and start the integration.
 3. In the Remote web interface, open **Settings → Integrations** and select the Monoprice HTP-1 integration.
 4. Choose **Configure**.
-5. Enter a device name and the HTP-1's IP address.
-6. The integration checks the connection before saving the configuration. If the check fails, confirm the address, network access, and that the HTP-1 is powered on, then try again.
+5. Enter a device name, the HTP-1's IP address, and its HTTP / WebSocket port. The port defaults to **80**; change it if your HTP-1 is configured to use a different port.
+6. The integration checks the connection using the supplied address and port before saving the configuration. If the check fails, confirm the address, port, network access, and that the HTP-1 is powered on, then try again.
 
 After setup, the integration creates a media player, a Remote entity, select entities, and sensor entities for the receiver.
 
