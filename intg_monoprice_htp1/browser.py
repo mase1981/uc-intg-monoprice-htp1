@@ -11,11 +11,14 @@ import hashlib
 import json
 import logging
 import math
+import ssl
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
+import certifi
 
 from ucapi import StatusCodes
 from ucapi.api_definitions import Pagination
@@ -42,12 +45,23 @@ _manifest: dict[str, Any] | None = None
 _index_loaded_at: float = 0.0
 _index_lock = asyncio.Lock()
 _entry_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
-_entry_locks: dict[tuple[str, str], asyncio.Lock] = {}
+
+
+@dataclass
+class _EntryLock:
+    """Reference-counted lock shared by in-flight requests for one entry."""
+
+    lock: asyncio.Lock
+    users: int = 0
+
+
+_entry_locks: dict[tuple[str, str], _EntryLock] = {}
 
 
 def _new_session() -> aiohttp.ClientSession:
-    """Create an HTTP session using the original Remote-compatible TLS setting."""
-    connector = aiohttp.TCPConnector(ssl=False)
+    """Create an HTTP session with verified TLS using the certifi CA bundle."""
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
     return aiohttp.ClientSession(connector=connector, timeout=REQUEST_TIMEOUT)
 
 
@@ -208,50 +222,62 @@ async def get_beq_entry(key: str) -> dict[str, Any] | None:
         _entry_cache.move_to_end(key)
         return _entry_cache[key]
 
-    # Multiple UI requests can select the same item concurrently. Serialize
-    # only requests for the same version/ID, then recheck the cache after
-    # acquiring the lock so only one network fetch is performed.
-    lock = _entry_locks.setdefault((version, key), asyncio.Lock())
-    async with lock:
-        if key in _entry_cache:
-            _entry_cache.move_to_end(key)
-            return _entry_cache[key]
+    # Keep one lock per in-flight (version, ID) request, but remove it once
+    # the final holder/waiter exits. The reference count is incremented before
+    # awaiting acquisition, so a lock cannot be removed while another task is
+    # queued behind it.
+    lock_key = (version, key)
+    lock_entry = _entry_locks.get(lock_key)
+    if lock_entry is None:
+        lock_entry = _EntryLock(asyncio.Lock())
+        _entry_locks[lock_key] = lock_entry
+    lock_entry.users += 1
+    lock = lock_entry.lock
+    try:
+        async with lock:
+            if key in _entry_cache:
+                _entry_cache.move_to_end(key)
+                return _entry_cache[key]
 
-        payload_version = version
-        try:
-            payload = await _fetch_entry_payload(payload_version, key)
-        except aiohttp.ClientResponseError as err:
-            if err.status != 404:
-                _LOG.error("Unable to load BEQ entry %s: %s", key, err)
-                return None
-            # A Pages deployment may replace the previous version while an old
-            # browse result is still open. Refresh and retry if this ID survived.
-            _index_loaded_at = time.monotonic() - INDEX_CACHE_LIFE - 1
-            if not await _load_index() or _manifest is None or _manifest["version"] == version:
-                return None
+            payload_version = version
             try:
-                payload_version = _manifest["version"]
                 payload = await _fetch_entry_payload(payload_version, key)
+            except aiohttp.ClientResponseError as err:
+                if err.status != 404:
+                    _LOG.error("Unable to load BEQ entry %s: %s", key, err)
+                    return None
+                # A Pages deployment may replace the previous version while an old
+                # browse result is still open. Refresh and retry if this ID survived.
+                _index_loaded_at = time.monotonic() - INDEX_CACHE_LIFE - 1
+                if not await _load_index() or _manifest is None or _manifest["version"] == version:
+                    return None
+                try:
+                    payload_version = _manifest["version"]
+                    payload = await _fetch_entry_payload(payload_version, key)
+                except asyncio.CancelledError:
+                    raise
+                except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, json.JSONDecodeError) as retry_err:
+                    _LOG.error("Unable to load BEQ entry %s after catalogue refresh: %s", key, retry_err)
+                    return None
             except asyncio.CancelledError:
                 raise
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, json.JSONDecodeError) as retry_err:
-                _LOG.error("Unable to load BEQ entry %s after catalogue refresh: %s", key, retry_err)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, json.JSONDecodeError) as err:
+                _LOG.error("Unable to load BEQ entry %s: %s", key, err)
                 return None
-        except asyncio.CancelledError:
-            raise
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, json.JSONDecodeError) as err:
-            _LOG.error("Unable to load BEQ entry %s: %s", key, err)
-            return None
 
-        # An older in-flight request may finish after another request has
-        # refreshed the index and cleared the cache. Never repopulate the
-        # current-version cache with a payload from the previous deployment.
-        if _manifest is not None and _manifest.get("version") == payload_version:
-            _entry_cache[key] = payload
-            _entry_cache.move_to_end(key)
-            while len(_entry_cache) > ENTRY_CACHE_MAX:
-                _entry_cache.popitem(last=False)
-        return payload
+            # An older in-flight request may finish after another request has
+            # refreshed the index and cleared the cache. Never repopulate the
+            # current-version cache with a payload from the previous deployment.
+            if _manifest is not None and _manifest.get("version") == payload_version:
+                _entry_cache[key] = payload
+                _entry_cache.move_to_end(key)
+                while len(_entry_cache) > ENTRY_CACHE_MAX:
+                    _entry_cache.popitem(last=False)
+            return payload
+    finally:
+        lock_entry.users -= 1
+        if lock_entry.users == 0 and _entry_locks.get(lock_key) is lock_entry:
+            del _entry_locks[lock_key]
 
 
 def _entry_to_item(entry: dict[str, Any]) -> BrowseMediaItem:
@@ -272,7 +298,62 @@ def _entry_to_item(entry: dict[str, Any]) -> BrowseMediaItem:
     )
 
 
+def _peq_location(device: HTP1Device) -> str | None:
+    """Return the reported PEQ placement, or None when it is unavailable."""
+    state = getattr(device, "_state", None)
+    if not isinstance(state, dict):
+        return None
+    peq = state.get("peq")
+    if not isinstance(peq, dict):
+        return None
+    location = peq.get("location")
+    return location if isinstance(location, str) else None
+
+
+def _browse_unavailable(device: HTP1Device) -> BrowseResults:
+    """Show an explanatory, non-actionable media item when BEQ is unavailable."""
+    items = [
+        BrowseMediaItem(
+            title="BEQ Unavailable",
+            media_class=MediaClass.TRACK,
+            media_type="beq_unavailable",
+            media_id="beq:unavailable",
+            can_play=False,
+            can_browse=False,
+            subtitle="BEQ loading requires PEQ Location to be set to Pre-Dirac.",
+        )
+    ]
+    # Keep the existing clear action reachable if a BEQ is already active.
+    if getattr(device, "beq_active", ""):
+        items.append(BrowseMediaItem(
+            title=f"Clear BEQ: {device.beq_active}",
+            media_class=MediaClass.TRACK,
+            media_type="beq_clear",
+            media_id="beq:clear",
+            can_play=True,
+            can_browse=False,
+            subtitle="Remove currently loaded BEQ filter",
+        ))
+    return BrowseResults(
+        media=BrowseMediaItem(
+            title=getattr(device, "name", "BEQ Catalogue"),
+            media_class=MediaClass.DIRECTORY,
+            media_type="root",
+            media_id="root",
+            can_browse=True,
+            can_search=False,
+            items=items,
+        ),
+        pagination=Pagination(page=1, limit=len(items), count=len(items)),
+    )
+
+
 async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | StatusCodes:
+    # BEQ is applied before Dirac on the LFE path. Never expose the catalogue
+    # when placement is post-Dirac or the receiver state cannot confirm Pre.
+    if _peq_location(device) != "pre":
+        return _browse_unavailable(device)
+
     media_type = options.media_type or "root"
     media_id = options.media_id or ""
     if media_type == "root":
@@ -288,6 +369,14 @@ async def browse(device: HTP1Device, options: BrowseOptions) -> BrowseResults | 
 
 
 async def search(device: HTP1Device, options: SearchOptions) -> SearchResults | StatusCodes:
+    # Search must obey the same PEQ-placement gate as browsing. The media
+    # browser may still invoke search directly even when its UI hides it.
+    if _peq_location(device) != "pre":
+        return SearchResults(
+            media=[],
+            pagination=Pagination(page=1, limit=0, count=0),
+        )
+
     query = options.query.casefold().strip()
     if not query:
         return SearchResults(media=[], pagination=Pagination(page=1, limit=0, count=0))
